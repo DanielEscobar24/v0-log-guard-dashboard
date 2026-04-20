@@ -9,8 +9,6 @@ import {
   FileText, 
   AlertTriangle, 
   TrendingUp, 
-  Globe, 
-  Settings,
   Shield,
   Zap,
   CheckCircle,
@@ -25,11 +23,9 @@ const navItems = [
   { href: "/live-logs", label: "Live Logs", icon: FileText },
   { href: "/alerts", label: "Alerts", icon: AlertTriangle },
   { href: "/analytics", label: "Analytics", icon: TrendingUp },
-  { href: "/maps", label: "Maps", icon: Globe },
-  { href: "/settings", label: "Settings", icon: Settings },
 ]
 
-export function Sidebar() {
+export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
   const [isScanning, setIsScanning] = useState(false)
   const [scanResults, setScanResults] = useState<string[]>([])
@@ -53,15 +49,15 @@ export function Sidebar() {
 
   return (
     <>
-      <aside className="fixed left-0 top-0 z-40 h-screen w-[260px] bg-[#1e293b] border-r border-[#334155] flex flex-col">
+      <div className="h-full w-[260px] bg-sidebar text-sidebar-foreground flex flex-col">
         {/* Logo */}
-        <div className="flex items-center gap-3 px-6 py-5 border-b border-[#334155]">
-          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-[#00b4ff]/20">
-            <Shield className="w-5 h-5 text-[#00b4ff]" />
+        <div className="flex items-center gap-3 px-6 py-5">
+          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-sidebar-accent">
+            <Shield className="w-5 h-5 text-sidebar-primary" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-white">LogGuard</h1>
-            <p className="text-xs text-[#94a3b8] tracking-wider">NETWORK OBSERVABILITY</p>
+            <h1 className="text-lg font-bold text-sidebar-foreground">LogGuard</h1>
+            <p className="text-xs text-muted-foreground tracking-wider">NETWORK OBSERVABILITY</p>
           </div>
         </div>
 
@@ -70,16 +66,17 @@ export function Sidebar() {
           {navItems.map((item) => {
             const isActive = pathname === item.href
             const Icon = item.icon
-            
+
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={onNavigate}
                 className={cn(
                   "flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200",
-                  isActive 
-                    ? "bg-[#00b4ff]/10 text-[#00b4ff] border-l-4 border-[#00b4ff] -ml-1 pl-5" 
-                    : "text-[#94a3b8] hover:bg-[#334155] hover:text-white"
+                  isActive
+                    ? "bg-sidebar-accent text-sidebar-primary -ml-1 pl-5"
+                    : "text-muted-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
                 )}
               >
                 <Icon className="w-5 h-5" />
@@ -91,22 +88,22 @@ export function Sidebar() {
 
         {/* Scan Results */}
         {isScanning && (
-          <div className="mx-4 mb-4 p-3 bg-[#0f172a] rounded-lg border border-[#334155]">
-            <p className="text-xs text-[#94a3b8] mb-2">System Scan in Progress...</p>
+          <div className="mx-4 mb-4 p-3 bg-background/35 rounded-lg">
+            <p className="text-xs text-muted-foreground mb-2">System Scan in Progress...</p>
             <div className="space-y-1.5">
               {microservices.map((service) => {
                 const isChecked = scanResults.includes(service.name)
                 return (
                   <div key={service.id} className="flex items-center gap-2 text-xs">
                     {isChecked ? (
-                      <CheckCircle className="w-3.5 h-3.5 text-[#14b8a6]" />
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
                     ) : scanResults.length === microservices.indexOf(service) ? (
-                      <Loader2 className="w-3.5 h-3.5 text-[#00b4ff] animate-spin" />
+                      <Loader2 className="w-3.5 h-3.5 text-sidebar-primary animate-spin" />
                     ) : (
-                      <div className="w-3.5 h-3.5 rounded-full border border-[#475569]" />
+                      <div className="w-3.5 h-3.5 rounded-full border border-border/50" />
                     )}
                     <span className={cn(
-                      isChecked ? "text-[#14b8a6]" : "text-[#64748b]"
+                      isChecked ? "text-emerald-500" : "text-muted-foreground"
                     )}>
                       {service.name}
                     </span>
@@ -122,7 +119,8 @@ export function Sidebar() {
           <Button 
             onClick={runDiagnostics}
             disabled={isScanning}
-            className="w-full bg-[#00b4ff]/10 hover:bg-[#00b4ff]/20 text-[#00b4ff] border border-[#00b4ff]/30 h-11"
+            variant="outline"
+            className="w-full h-11 bg-sidebar-accent/40 hover:bg-sidebar-accent text-sidebar-primary border-border/40"
           >
             {isScanning ? (
               <>
@@ -139,32 +137,40 @@ export function Sidebar() {
         </div>
 
         {/* User Profile */}
-        <div className="px-4 py-4 border-t border-[#334155]">
+        <div className="px-4 py-4">
           <div className="flex items-center gap-3">
             <Avatar className="w-9 h-9">
               <AvatarImage src="/placeholder-user.jpg" alt="Admin" />
-              <AvatarFallback className="bg-[#00b4ff]/20 text-[#00b4ff] text-sm">AR</AvatarFallback>
+              <AvatarFallback className="bg-sidebar-accent text-sidebar-primary text-sm">AR</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">Admin_Root</p>
-              <p className="text-xs text-[#64748b] truncate">System Administrator</p>
+              <p className="text-sm font-medium text-sidebar-foreground truncate">Admin_Root</p>
+              <p className="text-xs text-muted-foreground truncate">System Administrator</p>
             </div>
           </div>
         </div>
-      </aside>
+      </div>
 
       {/* Toast Notification */}
       {showToast && (
         <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-4 fade-in duration-300">
-          <div className="flex items-center gap-3 px-4 py-3 bg-[#14b8a6]/20 border border-[#14b8a6]/40 rounded-lg shadow-lg">
-            <CheckCircle className="w-5 h-5 text-[#14b8a6]" />
+          <div className="flex items-center gap-3 px-4 py-3 bg-card/70 backdrop-blur-xl border border-border/40 rounded-lg shadow-[0_16px_40px_rgba(0,0,0,0.12)]">
+            <CheckCircle className="w-5 h-5 text-emerald-500" />
             <div>
-              <p className="text-sm font-medium text-[#14b8a6]">System Healthy</p>
-              <p className="text-xs text-[#94a3b8]">All Microservices Operational</p>
+              <p className="text-sm font-medium text-foreground">System Healthy</p>
+              <p className="text-xs text-muted-foreground">All Microservices Operational</p>
             </div>
           </div>
         </div>
       )}
     </>
+  )
+}
+
+export function Sidebar() {
+  return (
+    <aside className="fixed left-0 top-0 z-40 h-screen w-[260px]">
+      <SidebarContent />
+    </aside>
   )
 }

@@ -4,7 +4,6 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Header } from "@/components/layout/header"
 import { KPICard } from "@/components/dashboard/kpi-card"
 import { TrafficChart } from "@/components/dashboard/traffic-chart"
-import { ThreatMap } from "@/components/dashboard/threat-map"
 import { LiveStreamTable } from "@/components/dashboard/live-stream-table"
 import { TopAttackTypesPanel, TopSourceIPsPanel, FiltersPanel } from "@/components/dashboard/sidebar-panels"
 import { kpiData } from "@/lib/mock-data"
@@ -12,17 +11,17 @@ import { kpiData } from "@/lib/mock-data"
 export default function DashboardPage() {
   return (
     <DashboardLayout>
-      <Header searchPlaceholder="Search logs, IPs, or threat signatures..." showTimeRange showRefresh />
+      <Header />
       
       <div className="p-6">
         {/* KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <KPICard 
-            title="Total Flows" 
+            title="Total_Flows" 
             value={kpiData.totalFlows.value}
             change={kpiData.totalFlows.change}
             trend={kpiData.totalFlows.trend}
-            sparklineColor="#00b4ff"
+            sparklineColor="#f97316"
           />
           <KPICard 
             title="Attacks" 
@@ -39,7 +38,7 @@ export default function DashboardPage() {
             sparklineColor="#14b8a6"
           />
           <KPICard 
-            title="Active Threats" 
+            title="Active_Threats" 
             value={kpiData.activeThreats.value}
             status={kpiData.activeThreats.status}
             sparklineColor="#ef4444"
@@ -52,7 +51,6 @@ export default function DashboardPage() {
           <div className="lg:col-span-3 space-y-6">
             <TrafficChart />
             <LiveStreamTable />
-            <ThreatMap />
           </div>
 
           {/* Right Sidebar */}

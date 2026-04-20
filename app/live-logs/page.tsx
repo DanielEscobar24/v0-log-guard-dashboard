@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { Fragment, useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Header } from "@/components/layout/header"
 import { Button } from "@/components/ui/button"
@@ -67,29 +67,29 @@ export default function LiveLogsPage() {
 
   return (
     <DashboardLayout>
-      <Header searchPlaceholder="Search logs by IP, Protocol or CIDR..." showTimeRange showRefresh />
+      <Header />
       
       <div className="p-6">
         {/* Title Row */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-white">Live Logs</h1>
+            <h1 className="text-2xl font-bold text-foreground">Live Logs</h1>
             <div className="flex items-center gap-2 mt-1">
               <span className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-[#14b8a6] animate-pulse" />
                 <span className="text-sm text-[#14b8a6] font-medium">LIVE</span>
               </span>
-              <span className="text-sm text-[#64748b]">Monitoring eth0 interface</span>
+              <span className="text-sm text-muted-foreground">Monitoring eth0 interface</span>
             </div>
           </div>
           
           <div className="flex items-center gap-4">
             {/* Throughput */}
-            <div className="bg-[#1e293b] rounded-xl px-5 py-3 border border-[#334155]">
-              <p className="text-xs text-[#64748b] uppercase tracking-wider">Throughput</p>
+            <div className="bg-card rounded-xl px-5 py-3 border border-border/40">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Throughput</p>
               <div className="flex items-center gap-2">
-                <span className="text-2xl font-bold text-white">{throughput}</span>
-                <span className="text-sm text-[#94a3b8]">eps</span>
+                <span className="text-2xl font-bold text-foreground">{throughput}</span>
+                <span className="text-sm text-muted-foreground">eps</span>
                 <div className="flex gap-0.5 ml-2">
                   {[...Array(5)].map((_, i) => (
                     <div 
@@ -108,61 +108,60 @@ export default function LiveLogsPage() {
                 variant="outline"
                 className={cn(
                   "w-10 h-10 p-0",
-                  !isLive ? "bg-[#00b4ff]/20 border-[#00b4ff]/50" : "bg-[#1e293b] border-[#334155]"
+                  !isLive ? "bg-primary/10 border-primary/30" : "bg-card border-border/40"
                 )}
                 onClick={() => setIsLive(false)}
               >
-                <Pause className="w-4 h-4 text-[#94a3b8]" />
+                <Pause className="w-4 h-4 text-muted-foreground" />
               </Button>
               <Button 
                 variant="outline"
                 className={cn(
                   "w-10 h-10 p-0",
-                  isLive ? "bg-[#14b8a6]/20 border-[#14b8a6]/50" : "bg-[#1e293b] border-[#334155]"
+                  isLive ? "bg-emerald-500/10 border-emerald-500/30" : "bg-card border-border/40"
                 )}
                 onClick={() => setIsLive(true)}
               >
-                <Play className="w-4 h-4 text-[#94a3b8]" />
+                <Play className="w-4 h-4 text-muted-foreground" />
               </Button>
             </div>
           </div>
         </div>
 
         {/* Logs Table */}
-        <div className="bg-[#1e293b] rounded-xl border border-[#334155] overflow-hidden">
+        <div className="bg-card rounded-xl border border-border/40 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-[#334155]">
-                  <th className="text-left px-5 py-4 text-xs font-medium text-[#64748b] uppercase tracking-wider">Timestamp</th>
-                  <th className="text-left px-5 py-4 text-xs font-medium text-[#64748b] uppercase tracking-wider">SRC IP</th>
-                  <th className="text-left px-5 py-4 text-xs font-medium text-[#64748b] uppercase tracking-wider">DST IP</th>
-                  <th className="text-left px-5 py-4 text-xs font-medium text-[#64748b] uppercase tracking-wider">Proto</th>
-                  <th className="text-left px-5 py-4 text-xs font-medium text-[#64748b] uppercase tracking-wider">Flow Duration</th>
-                  <th className="text-left px-5 py-4 text-xs font-medium text-[#64748b] uppercase tracking-wider">Label</th>
-                  <th className="text-left px-5 py-4 text-xs font-medium text-[#64748b] uppercase tracking-wider">Details</th>
+                <tr className="bg-background/30">
+                  <th className="text-left px-5 py-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Timestamp</th>
+                  <th className="text-left px-5 py-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">SRC IP</th>
+                  <th className="text-left px-5 py-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">DST IP</th>
+                  <th className="text-left px-5 py-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Proto</th>
+                  <th className="text-left px-5 py-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Flow Duration</th>
+                  <th className="text-left px-5 py-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Label</th>
+                  <th className="text-left px-5 py-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Details</th>
                 </tr>
               </thead>
               <tbody>
                 {logs.map((log, index) => (
-                  <>
+                  <Fragment key={log.id}>
                     <tr 
-                      key={log.id}
                       className={cn(
-                        "border-b border-[#334155]/50 hover:bg-[#334155]/30 transition-colors cursor-pointer",
+                        "hover:bg-background/30 transition-colors cursor-pointer",
                         index === 0 && isLive && "animate-in fade-in duration-500",
-                        expandedLog === log.id && "bg-[#334155]/30"
+                        expandedLog === log.id && "bg-background/30"
                       )}
                       onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)}
                     >
-                      <td className="px-5 py-4 text-sm text-[#94a3b8] font-mono">{formatTime(log.timestamp)}</td>
+                      <td className="px-5 py-4 text-sm text-muted-foreground font-mono">{formatTime(log.timestamp)}</td>
                       <td className={cn(
                         "px-5 py-4 text-sm font-mono font-medium",
                         log.label !== 'Benign' ? "text-[#ef4444]" : "text-[#00b4ff]"
                       )}>
                         {log.src_ip}
                       </td>
-                      <td className="px-5 py-4 text-sm text-[#e2e8f0] font-mono">{log.dst_ip}</td>
+                      <td className="px-5 py-4 text-sm text-foreground font-mono">{log.dst_ip}</td>
                       <td className="px-5 py-4">
                         <span className={cn(
                           "px-2.5 py-1 rounded text-xs font-medium border",
@@ -171,7 +170,7 @@ export default function LiveLogsPage() {
                           {log.protocol}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-sm text-[#94a3b8]">{log.flow_duration.toFixed(2)} ms</td>
+                      <td className="px-5 py-4 text-sm text-muted-foreground">{log.flow_duration.toFixed(2)} ms</td>
                       <td className="px-5 py-4">
                         <span className={cn(
                           "px-2.5 py-1 rounded text-xs font-medium",
@@ -182,26 +181,26 @@ export default function LiveLogsPage() {
                       </td>
                       <td className="px-5 py-4">
                         {expandedLog === log.id ? (
-                          <ChevronUp className="w-5 h-5 text-[#64748b]" />
+                          <ChevronUp className="w-5 h-5 text-muted-foreground" />
                         ) : (
-                          <ChevronDown className="w-5 h-5 text-[#64748b]" />
+                          <ChevronDown className="w-5 h-5 text-muted-foreground" />
                         )}
                       </td>
                     </tr>
                     {expandedLog === log.id && (
                       <tr key={`${log.id}-details`}>
-                        <td colSpan={7} className="px-5 py-4 bg-[#0f172a]">
+                        <td colSpan={7} className="px-5 py-4 bg-background/40">
                           <div className="flex items-center gap-2 mb-3">
-                            <Monitor className="w-4 h-4 text-[#64748b]" />
-                            <span className="text-xs text-[#64748b] uppercase tracking-wider font-medium">Raw Log Data</span>
+                            <Monitor className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Raw Log Data</span>
                           </div>
-                          <pre className="text-xs font-mono text-[#94a3b8] bg-[#1e293b] rounded-lg p-4 overflow-x-auto border border-[#334155]">
+                          <pre className="text-xs font-mono text-muted-foreground bg-card rounded-lg p-4 overflow-x-auto border border-border/40">
 {`{"flow_id": "${log.flow_id}", "timestamp": "${log.timestamp}", "source": "${log.src_ip}", "destination": "${log.dst_ip}", "protocol": ${log.protocol === 'TCP' ? 6 : log.protocol === 'UDP' ? 17 : 1}, "length": ${log.length}, "flags": "${log.flags}", "payload": "${log.payload}", "prediction_confidence": ${log.prediction_confidence?.toFixed(4)}}`}
                           </pre>
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -209,7 +208,7 @@ export default function LiveLogsPage() {
         </div>
 
         {/* Footer Stats */}
-        <div className="flex items-center justify-between mt-4 text-sm text-[#64748b]">
+        <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
           <span>Displaying latest 5,000 events</span>
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1.5">

@@ -43,16 +43,16 @@ export function LiveStreamTable() {
   }
 
   return (
-    <div className="bg-[#1e293b] rounded-xl border border-[#334155]">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-[#334155]">
-        <h3 className="text-sm font-semibold text-white uppercase tracking-wider">
+    <div className="bg-card rounded-xl border border-border/40">
+      <div className="flex items-center justify-between px-5 py-4">
+        <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">
           CICIDS-2017 Live Stream
         </h3>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="w-8 h-8 text-[#94a3b8] hover:text-white hover:bg-[#334155]">
+          <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-foreground hover:bg-accent">
             <Download className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="w-8 h-8 text-[#94a3b8] hover:text-white hover:bg-[#334155]">
+          <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-foreground hover:bg-accent">
             <Settings className="w-4 h-4" />
           </Button>
         </div>
@@ -61,13 +61,13 @@ export function LiveStreamTable() {
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-[#334155]">
-              <th className="text-left px-5 py-3 text-xs font-medium text-[#64748b] uppercase tracking-wider">Timestamp</th>
-              <th className="text-left px-5 py-3 text-xs font-medium text-[#64748b] uppercase tracking-wider">SRC IP</th>
-              <th className="text-left px-5 py-3 text-xs font-medium text-[#64748b] uppercase tracking-wider">DST IP</th>
-              <th className="text-left px-5 py-3 text-xs font-medium text-[#64748b] uppercase tracking-wider">Proto</th>
-              <th className="text-left px-5 py-3 text-xs font-medium text-[#64748b] uppercase tracking-wider">Flow Duration</th>
-              <th className="text-left px-5 py-3 text-xs font-medium text-[#64748b] uppercase tracking-wider">Label</th>
+            <tr className="bg-background/30">
+              <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Timestamp</th>
+              <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">SRC IP</th>
+              <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">DST IP</th>
+              <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Proto</th>
+              <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Flow Duration</th>
+              <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Label</th>
             </tr>
           </thead>
           <tbody>
@@ -75,20 +75,20 @@ export function LiveStreamTable() {
               <tr 
                 key={log.id} 
                 className={cn(
-                  "border-b border-[#334155]/50 hover:bg-[#334155]/30 transition-colors",
+                  "hover:bg-background/30 transition-colors",
                   index === 0 && "animate-in fade-in duration-500"
                 )}
               >
-                <td className="px-5 py-3 text-sm text-[#94a3b8] font-mono">{formatTime(log.timestamp)}</td>
+                <td className="px-5 py-3 text-sm text-muted-foreground font-mono">{formatTime(log.timestamp)}</td>
                 <td className={cn(
                   "px-5 py-3 text-sm font-mono",
                   log.label !== 'Benign' ? "text-[#ef4444]" : "text-[#00b4ff]"
                 )}>
                   {log.src_ip}
                 </td>
-                <td className="px-5 py-3 text-sm text-[#e2e8f0] font-mono">{log.dst_ip}</td>
-                <td className="px-5 py-3 text-sm text-[#94a3b8]">{log.protocol}</td>
-                <td className="px-5 py-3 text-sm text-[#94a3b8]">{log.flow_duration.toFixed(0)}</td>
+                <td className="px-5 py-3 text-sm text-foreground font-mono">{log.dst_ip}</td>
+                <td className="px-5 py-3 text-sm text-muted-foreground">{log.protocol}</td>
+                <td className="px-5 py-3 text-sm text-muted-foreground">{log.flow_duration.toFixed(0)}</td>
                 <td className="px-5 py-3">
                   <span className={cn(
                     "px-2.5 py-1 rounded text-xs font-medium",

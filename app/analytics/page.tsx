@@ -32,14 +32,14 @@ export default function AnalyticsPage() {
 
   return (
     <DashboardLayout>
-      <Header searchPlaceholder="Search analytics metrics..." showTimeRange showRefresh />
+      <Header />
       
       <div className="p-6">
         {/* Title Row */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-white uppercase tracking-wide">Analytics Engine</h1>
-            <p className="text-sm text-[#64748b] mt-1">Deep-packet analysis and heuristic traffic distribution.</p>
+            <h1 className="text-2xl font-bold text-foreground uppercase tracking-wide">Analytics Engine</h1>
+            <p className="text-sm text-muted-foreground mt-1">Deep-packet analysis and heuristic traffic distribution.</p>
           </div>
           
           <div className="flex items-center gap-2 px-3 py-1.5 bg-[#14b8a6]/10 rounded-full border border-[#14b8a6]/30">
@@ -51,8 +51,8 @@ export default function AnalyticsPage() {
         {/* Top Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           {/* Attack Distribution */}
-          <div className="bg-[#1e293b] rounded-xl p-5 border border-[#334155]">
-            <h3 className="text-xs font-medium text-[#64748b] uppercase tracking-wider mb-4">
+          <div className="bg-card rounded-xl p-5 border border-border/40">
+            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">
               Attack Distribution
             </h3>
             
@@ -76,8 +76,8 @@ export default function AnalyticsPage() {
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-3xl font-bold text-white">{Math.round(totalEvents).toLocaleString()}</span>
-                  <span className="text-xs text-[#64748b] uppercase">Total Events</span>
+                  <span className="text-3xl font-bold text-foreground">{Math.round(totalEvents).toLocaleString()}</span>
+                  <span className="text-xs text-muted-foreground uppercase">Total Events</span>
                 </div>
               </div>
               
@@ -85,8 +85,8 @@ export default function AnalyticsPage() {
                 {attackDistribution.map((item, index) => (
                   <div key={item.name} className="flex items-center gap-3">
                     <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[index] }} />
-                    <span className="text-sm text-[#94a3b8]">{item.name}</span>
-                    <span className="text-sm font-semibold text-white ml-auto">{item.value}%</span>
+                    <span className="text-sm text-muted-foreground">{item.name}</span>
+                    <span className="text-sm font-semibold text-foreground ml-auto">{item.value}%</span>
                   </div>
                 ))}
               </div>
@@ -94,14 +94,14 @@ export default function AnalyticsPage() {
           </div>
 
           {/* Flow Duration */}
-          <div className="bg-[#1e293b] rounded-xl p-5 border border-[#334155]">
+          <div className="bg-card rounded-xl p-5 border border-border/40">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-xs font-medium text-[#64748b] uppercase tracking-wider">
+                <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Flow Duration
                 </h3>
                 <div className="flex items-baseline gap-2 mt-1">
-                  <span className="text-3xl font-bold text-white">240ms</span>
+                  <span className="text-3xl font-bold text-foreground">240ms</span>
                   <span className="text-sm text-[#14b8a6]">Avg Latency</span>
                 </div>
               </div>
@@ -128,10 +128,10 @@ export default function AnalyticsPage() {
                   <YAxis hide />
                   <Tooltip 
                     contentStyle={{ 
-                      backgroundColor: '#1e293b', 
-                      border: '1px solid #334155',
+                      backgroundColor: 'var(--popover)',
+                      border: '1px solid var(--border)',
                       borderRadius: '8px',
-                      color: '#e2e8f0'
+                      color: 'var(--popover-foreground)'
                     }}
                   />
                   <Bar dataKey="count" fill="#475569" radius={[4, 4, 0, 0]} />
@@ -144,8 +144,8 @@ export default function AnalyticsPage() {
         {/* Middle Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           {/* Top Protocols */}
-          <div className="bg-[#1e293b] rounded-xl p-5 border border-[#334155]">
-            <h3 className="text-xs font-medium text-[#64748b] uppercase tracking-wider mb-4">
+          <div className="bg-card rounded-xl p-5 border border-border/40">
+            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">
               Top Protocols
             </h3>
             
@@ -153,10 +153,10 @@ export default function AnalyticsPage() {
               {protocolData.map((protocol) => (
                 <div key={protocol.name}>
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm font-medium text-white">{protocol.name}</span>
-                    <span className="text-sm text-[#94a3b8]">{protocol.value} {protocol.unit}</span>
+                    <span className="text-sm font-medium text-foreground">{protocol.name}</span>
+                    <span className="text-sm text-muted-foreground">{protocol.value} {protocol.unit}</span>
                   </div>
-                  <div className="h-2 bg-[#0f172a] rounded-full overflow-hidden">
+                  <div className="h-2 bg-background/40 rounded-full overflow-hidden">
                     <div 
                       className="h-full rounded-full bg-gradient-to-r from-[#00b4ff] to-[#14b8a6]"
                       style={{ width: `${(protocol.value / 12.4) * 100}%` }}
@@ -168,8 +168,8 @@ export default function AnalyticsPage() {
           </div>
 
           {/* Active Port Concentration */}
-          <div className="bg-[#1e293b] rounded-xl p-5 border border-[#334155]">
-            <h3 className="text-xs font-medium text-[#64748b] uppercase tracking-wider mb-4">
+          <div className="bg-card rounded-xl p-5 border border-border/40">
+            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">
               Active Port Concentration
             </h3>
             
@@ -181,7 +181,7 @@ export default function AnalyticsPage() {
                     "aspect-square rounded-lg flex items-center justify-center text-sm font-medium border",
                     port.status === 'critical' ? "bg-[#ef4444]/10 border-[#ef4444]/30 text-white" :
                     port.status === 'active' ? "bg-[#334155] border-[#475569] text-[#94a3b8]" :
-                    "bg-[#1e293b] border-[#334155] text-[#475569]"
+                    "bg-card border-border/40 text-muted-foreground"
                   )}
                 >
                   {port.port || ''}
@@ -191,7 +191,7 @@ export default function AnalyticsPage() {
               {[...Array(12 - portConcentration.length)].map((_, i) => (
                 <div 
                   key={`empty-${i}`}
-                  className="aspect-square rounded-lg bg-[#1e293b] border border-[#334155]"
+                  className="aspect-square rounded-lg bg-card border border-border/40"
                 />
               ))}
             </div>
@@ -206,7 +206,7 @@ export default function AnalyticsPage() {
                 <span className="text-[#94a3b8]">ACTIVE</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-[#1e293b] border border-[#334155]" />
+                <span className="w-3 h-3 rounded bg-card border border-border/40" />
                 <span className="text-[#94a3b8]">IDLE</span>
               </div>
             </div>
@@ -214,24 +214,24 @@ export default function AnalyticsPage() {
         </div>
 
         {/* AI Insights Section */}
-        <div className="bg-gradient-to-b from-[#1e293b] to-[#0f172a] rounded-xl border border-[#334155] overflow-hidden">
+        <div className="bg-gradient-to-b from-card to-background rounded-xl border border-border/40 overflow-hidden">
           <div className="text-center py-8">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-[#00b4ff]/10 rounded-full border border-[#00b4ff]/30 mb-6">
               <Sparkles className="w-4 h-4 text-[#00b4ff]" />
               <span className="text-sm text-[#00b4ff] font-medium">NEURAL ENGINE V2.0</span>
             </div>
             
-            <h2 className="text-4xl font-bold text-white mb-4">
+            <h2 className="text-4xl font-bold text-foreground mb-4">
               <span className="gradient-text">AI-Powered Insights</span> – Coming Soon
             </h2>
             
-            <p className="text-[#94a3b8] max-w-xl mx-auto leading-relaxed">
+            <p className="text-muted-foreground max-w-xl mx-auto leading-relaxed">
               Our proprietary LLM is currently training on your network patterns. Soon, 
               {"you'll"} receive automated root-cause analysis and predictive threat intelligence.
             </p>
           </div>
           
-          <div className="bg-[#1e293b]/50 mx-8 mb-8 rounded-xl p-8 border border-[#334155]">
+          <div className="bg-card/50 mx-8 mb-8 rounded-xl p-8 border border-border/40">
             <div className="flex flex-col items-center">
               <Share2 className="w-12 h-12 text-[#475569] mb-4" />
               

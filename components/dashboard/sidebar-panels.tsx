@@ -13,18 +13,18 @@ import {
 
 export function TopAttackTypesPanel() {
   return (
-    <div className="bg-[#1e293b] rounded-xl p-5 border border-[#334155]">
-      <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-4">
+    <div className="bg-card rounded-xl p-5 border border-border/40">
+      <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider mb-4">
         Top Attack Types
       </h3>
       <div className="space-y-4">
         {topAttackTypes.map((attack) => (
           <div key={attack.name}>
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-sm text-[#e2e8f0]">{attack.name}</span>
-              <span className="text-sm text-[#94a3b8]">{attack.percentage}%</span>
+              <span className="text-sm text-foreground">{attack.name}</span>
+              <span className="text-sm text-muted-foreground">{attack.percentage}%</span>
             </div>
-            <div className="h-1.5 bg-[#0f172a] rounded-full overflow-hidden">
+            <div className="h-1.5 bg-background/40 rounded-full overflow-hidden">
               <div 
                 className="h-full rounded-full transition-all duration-500"
                 style={{ 
@@ -42,8 +42,8 @@ export function TopAttackTypesPanel() {
 
 export function TopSourceIPsPanel() {
   return (
-    <div className="bg-[#1e293b] rounded-xl p-5 border border-[#334155]">
-      <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-4">
+    <div className="bg-card rounded-xl p-5 border border-border/40">
+      <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider mb-4">
         Top Source IPs
       </h3>
       <div className="space-y-3">
@@ -64,33 +64,33 @@ export function FiltersPanel() {
   const attackTypes = ['BENIGN', 'DDoS', 'PortScan', 'Bot', 'Brute Force']
   
   return (
-    <div className="bg-[#1e293b] rounded-xl p-5 border border-[#334155]">
+    <div className="bg-card rounded-xl p-5 border border-border/40">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-white uppercase tracking-wider">
+        <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">
           Filters
         </h3>
       </div>
       
       <div className="space-y-4">
         <div>
-          <label className="text-xs text-[#64748b] uppercase tracking-wider mb-2 block">
+          <label className="text-xs text-muted-foreground uppercase tracking-wider mb-2 block">
             Date Range
           </label>
           <Select defaultValue="24h">
-            <SelectTrigger className="bg-[#0f172a] border-[#334155] text-[#e2e8f0]">
+            <SelectTrigger className="bg-background/40 border-border/40 text-foreground">
               <SelectValue placeholder="Select range" />
             </SelectTrigger>
-            <SelectContent className="bg-[#1e293b] border-[#334155]">
-              <SelectItem value="1h" className="text-[#e2e8f0] focus:bg-[#334155]">Last 1 Hour</SelectItem>
-              <SelectItem value="24h" className="text-[#e2e8f0] focus:bg-[#334155]">Last 24 Hours</SelectItem>
-              <SelectItem value="7d" className="text-[#e2e8f0] focus:bg-[#334155]">Last 7 Days</SelectItem>
-              <SelectItem value="30d" className="text-[#e2e8f0] focus:bg-[#334155]">Last 30 Days</SelectItem>
+            <SelectContent className="bg-popover/80 backdrop-blur-xl border-border/40">
+              <SelectItem value="1h">Last 1 Hour</SelectItem>
+              <SelectItem value="24h">Last 24 Hours</SelectItem>
+              <SelectItem value="7d">Last 7 Days</SelectItem>
+              <SelectItem value="30d">Last 30 Days</SelectItem>
             </SelectContent>
           </Select>
         </div>
         
         <div>
-          <label className="text-xs text-[#64748b] uppercase tracking-wider mb-3 block">
+          <label className="text-xs text-muted-foreground uppercase tracking-wider mb-3 block">
             Attack Type
           </label>
           <div className="space-y-2.5">
@@ -101,7 +101,7 @@ export function FiltersPanel() {
                   defaultChecked={['BENIGN', 'DDoS', 'PortScan'].includes(type)}
                   className="border-[#475569] data-[state=checked]:bg-[#00b4ff] data-[state=checked]:border-[#00b4ff]"
                 />
-                <label htmlFor={type} className="text-sm text-[#e2e8f0] cursor-pointer">
+                <label htmlFor={type} className="text-sm text-foreground cursor-pointer">
                   {type}
                 </label>
               </div>

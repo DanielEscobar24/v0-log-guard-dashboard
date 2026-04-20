@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils"
 import { TrendingUp, TrendingDown, AlertTriangle } from "lucide-react"
 import { Area, AreaChart, ResponsiveContainer } from "recharts"
+import { useId } from "react"
 
 interface KPICardProps {
   title: string
@@ -23,18 +24,19 @@ export function KPICard({
   sparklineData,
   sparklineColor = "#00b4ff"
 }: KPICardProps) {
+  const gradientId = useId()
   const chartData = sparklineData?.map((v, i) => ({ value: v, index: i })) || 
     Array.from({ length: 12 }, (_, i) => ({ value: Math.random() * 100, index: i }))
 
   return (
-    <div className="bg-[#1e293b] rounded-xl p-5 border border-[#334155] relative overflow-hidden">
+    <div className="bg-card rounded-xl p-5 border border-border/40 relative overflow-hidden">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium text-[#94a3b8] uppercase tracking-wider">{title}</p>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{title}</p>
           <div className="flex items-baseline gap-2 mt-1">
             <span className={cn(
               "text-3xl font-bold",
-              status === 'CRITICAL' ? "text-[#ef4444]" : "text-white"
+              status === 'CRITICAL' ? "text-destructive" : "text-foreground"
             )}>
               {value}
             </span>
@@ -52,7 +54,7 @@ export function KPICard({
               </span>
             )}
             {status === 'CRITICAL' && (
-              <span className="flex items-center gap-1 text-xs font-medium text-[#ef4444] bg-[#ef4444]/10 px-2 py-0.5 rounded">
+              <span className="flex items-center gap-1 text-xs font-medium text-destructive bg-destructive/10 px-2 py-0.5 rounded">
                 <AlertTriangle className="w-3 h-3" />
                 CRITICAL
               </span>
@@ -66,7 +68,7 @@ export function KPICard({
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartData}>
             <defs>
-              <linearGradient id={`gradient-${title}`} x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={sparklineColor} stopOpacity={0.3} />
                 <stop offset="100%" stopColor={sparklineColor} stopOpacity={0} />
               </linearGradient>
@@ -76,7 +78,7 @@ export function KPICard({
               dataKey="value"
               stroke={sparklineColor}
               strokeWidth={2}
-              fill={`url(#gradient-${title})`}
+              fill={`url(#${gradientId})`}
             />
           </AreaChart>
         </ResponsiveContainer>

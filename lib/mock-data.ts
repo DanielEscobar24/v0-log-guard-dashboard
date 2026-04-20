@@ -67,6 +67,12 @@ const randomIP = () => {
   return ranges[Math.floor(Math.random() * ranges.length)]()
 }
 
+const uniqueId = (prefix: string) => {
+  const uuid = globalThis.crypto?.randomUUID?.()
+  if (uuid) return `${prefix}-${uuid}`
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
 // Generate mock log entries
 export const generateLogs = (count: number): LogEntry[] => {
   const protocols: LogEntry['protocol'][] = ['TCP', 'UDP', 'ICMP', 'HTTPS']
@@ -78,7 +84,7 @@ export const generateLogs = (count: number): LogEntry[] => {
     now.setSeconds(now.getSeconds() - i * 2)
     
     return {
-      id: `log-${i}`,
+      id: uniqueId('log'),
       flow_id: `FL-${Math.floor(Math.random() * 100000)}`,
       timestamp: now.toISOString(),
       src_ip: randomIP(),

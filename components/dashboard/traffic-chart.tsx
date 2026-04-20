@@ -5,19 +5,19 @@ import { trafficData } from "@/lib/mock-data"
 
 export function TrafficChart() {
   return (
-    <div className="bg-[#1e293b] rounded-xl p-5 border border-[#334155]">
+    <div className="bg-card rounded-xl p-5 border border-border/40">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-white uppercase tracking-wider">
+        <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">
           Network Traffic Volume Over Time
         </h3>
         <div className="flex items-center gap-4 text-xs">
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-[#00b4ff]" />
-            <span className="text-[#94a3b8]">Benign</span>
+            <span className="text-muted-foreground">Benign</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]" />
-            <span className="text-[#94a3b8]">Attacks</span>
+            <span className="text-muted-foreground">Attacks</span>
           </div>
         </div>
       </div>
@@ -44,22 +44,53 @@ export function TrafficChart() {
               interval={3}
             />
             <YAxis 
+              yAxisId="benign"
+              orientation="left"
               axisLine={false}
               tickLine={false}
               tick={{ fill: '#64748b', fontSize: 11 }}
+              label={{
+                value: "Benign (events)",
+                angle: -90,
+                position: "insideLeft",
+                fill: "var(--muted-foreground)",
+                fontSize: 11,
+              }}
               tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
+              tickMargin={10}
+            />
+            <YAxis
+              yAxisId="attacks"
+              orientation="right"
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: "#64748b", fontSize: 11 }}
+              label={{
+                value: "Attacks (alerts)",
+                angle: 90,
+                position: "insideRight",
+                fill: "var(--muted-foreground)",
+                fontSize: 11,
+              }}
+              tickFormatter={(value) => `${value}`}
               tickMargin={10}
             />
             <Tooltip 
               contentStyle={{ 
-                backgroundColor: '#1e293b', 
-                border: '1px solid #334155',
+                backgroundColor: 'var(--popover)',
+                border: '1px solid var(--border)',
                 borderRadius: '8px',
-                color: '#e2e8f0'
+                color: 'var(--popover-foreground)'
               }}
-              labelStyle={{ color: '#94a3b8' }}
+              labelStyle={{ color: 'var(--muted-foreground)' }}
+              formatter={(value, name) => {
+                if (name === "benign") return [`${Number(value).toLocaleString()} events`, "Benign"]
+                if (name === "attacks") return [`${Number(value).toLocaleString()} alerts`, "Attacks"]
+                return [String(value), String(name)]
+              }}
             />
             <Area
+              yAxisId="benign"
               type="monotone"
               dataKey="benign"
               stroke="#00b4ff"
@@ -67,6 +98,7 @@ export function TrafficChart() {
               fill="url(#benignGradient)"
             />
             <Area
+              yAxisId="attacks"
               type="monotone"
               dataKey="attacks"
               stroke="#f59e0b"
