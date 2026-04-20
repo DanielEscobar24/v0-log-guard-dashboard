@@ -14,5 +14,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY main.py .
 
-# Run the ingestion service
+# Create model directory (for future ML model)
+RUN mkdir -p /app/model
+
+# Run as non-root user
+RUN useradd -m appuser && chown -R appuser:appuser /app
+USER appuser
+
 CMD ["python", "-u", "main.py"]

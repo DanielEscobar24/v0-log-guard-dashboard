@@ -13,6 +13,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY main.py .
+COPY cleaning_utils.py .
 
-# Run the processing service
+# Create data directory
+RUN mkdir -p /app/data
+
+# Run as non-root user
+RUN useradd -m appuser && chown -R appuser:appuser /app
+USER appuser
+
 CMD ["python", "-u", "main.py"]
