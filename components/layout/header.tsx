@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { SidebarContent } from "@/components/layout/sidebar"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 
 export function Header() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -39,6 +39,7 @@ export function Header() {
           <SheetContent side="left" className="lg:hidden p-0 w-[260px] bg-sidebar border-border/40">
             <SheetHeader className="sr-only">
               <SheetTitle>Navigation</SheetTitle>
+              <SheetDescription>Displays the mobile navigation menu.</SheetDescription>
             </SheetHeader>
             <div className="h-full">
               <SidebarContent onNavigate={() => setSidebarOpen(false)} />

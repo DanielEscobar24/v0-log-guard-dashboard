@@ -64,34 +64,39 @@ export default function AlertsPage() {
       
       <div className="p-6">
         {/* Title Row */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col gap-4 mb-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Active Network Alerts</h1>
             <p className="text-sm text-muted-foreground mt-1">Real-time threat intelligence and vulnerability detection.</p>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end lg:w-auto">
             {/* Filter Buttons */}
-            <div className="flex bg-card rounded-lg p-1 border border-border/40">
-              {(['All', 'Critical', 'High'] as const).map((f) => (
-                <Button
-                  key={f}
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    "px-4 h-8",
-                    filter === f 
-                      ? "bg-primary text-primary-foreground hover:bg-primary/90" 
-                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                  )}
-                  onClick={() => setFilter(f)}
-                >
-                  {f}
-                </Button>
-              ))}
+            <div className="w-full overflow-x-auto">
+              <div className="inline-flex bg-card rounded-lg p-1 border border-border/40 whitespace-nowrap">
+                {(['All', 'Critical', 'High'] as const).map((f) => (
+                  <Button
+                    key={f}
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      "px-4 h-8 shrink-0",
+                      filter === f 
+                        ? "bg-primary text-primary-foreground hover:bg-primary/90" 
+                        : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                    )}
+                    onClick={() => setFilter(f)}
+                  >
+                    {f}
+                  </Button>
+                ))}
+              </div>
             </div>
             
-            <Button variant="outline" className="bg-card border-border/40 text-foreground hover:bg-accent">
+            <Button
+              variant="outline"
+              className="bg-card border-border/40 text-foreground hover:bg-accent w-full sm:w-auto"
+            >
               <span className="mr-2">Advanced Filters</span>
             </Button>
           </div>

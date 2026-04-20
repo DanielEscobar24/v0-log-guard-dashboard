@@ -30,9 +30,15 @@ export default function LiveLogsPage() {
   const [expandedLog, setExpandedLog] = useState<string | null>(null)
   const [isLive, setIsLive] = useState(true)
   const [throughput, setThroughput] = useState(420)
+  const [throughputBars, setThroughputBars] = useState<number[]>([12, 18, 14, 20, 16])
 
   useEffect(() => {
     setLogs(generateLogs(20))
+  }, [])
+
+  useEffect(() => {
+    // Evita hydration mismatch: SSR debe ser determinista.
+    setThroughputBars(Array.from({ length: 5 }, () => 8 + Math.random() * 16))
   }, [])
 
   useEffect(() => {
@@ -71,7 +77,7 @@ export default function LiveLogsPage() {
       
       <div className="p-6">
         {/* Title Row */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col gap-4 mb-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Live Logs</h1>
             <div className="flex items-center gap-2 mt-1">
@@ -83,19 +89,19 @@ export default function LiveLogsPage() {
             </div>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end lg:w-auto">
             {/* Throughput */}
-            <div className="bg-card rounded-xl px-5 py-3 border border-border/40">
+            <div className="bg-card rounded-xl px-5 py-3 border border-border/40 w-full sm:w-auto">
               <p className="text-xs text-muted-foreground uppercase tracking-wider">Throughput</p>
               <div className="flex items-center gap-2">
                 <span className="text-2xl font-bold text-foreground">{throughput}</span>
                 <span className="text-sm text-muted-foreground">eps</span>
                 <div className="flex gap-0.5 ml-2">
-                  {[...Array(5)].map((_, i) => (
+                  {throughputBars.map((h, i) => (
                     <div 
                       key={i} 
                       className="w-1.5 bg-[#14b8a6]" 
-                      style={{ height: `${8 + Math.random() * 16}px` }}
+                      style={{ height: `${h}px` }}
                     />
                   ))}
                 </div>
@@ -103,7 +109,7 @@ export default function LiveLogsPage() {
             </div>
             
             {/* Controls */}
-            <div className="flex gap-2">
+            <div className="flex gap-2 justify-end sm:justify-start">
               <Button 
                 variant="outline"
                 className={cn(
