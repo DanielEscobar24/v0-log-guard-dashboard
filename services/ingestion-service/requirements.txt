@@ -1,4 +1,4 @@
 pika==1.3.2
-kagglehub==0.2.5
-pandas==2.1.4
-numpy==1.26.2
+kagglehub==0.4.1
+pandas==2.2.3
+numpy==2.4.4

@@ -1,6 +1,5 @@
 "use client"
 
-import { topAttackTypes, topSourceIPs } from "@/lib/mock-data"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import {
@@ -11,14 +10,19 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-export function TopAttackTypesPanel() {
+type AttackItem = { name: string; percentage: number; color: string }
+
+export function TopAttackTypesPanel({ items }: { items: AttackItem[] }) {
   return (
     <div className="bg-card rounded-xl p-5 border border-border/40">
       <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider mb-4">
         Top Attack Types
       </h3>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No hay ataques en los datos actuales (o solo tráfico Benign).</p>
+      ) : (
       <div className="space-y-4">
-        {topAttackTypes.map((attack) => (
+        {items.map((attack) => (
           <div key={attack.name}>
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-sm text-foreground">{attack.name}</span>
@@ -36,26 +40,35 @@ export function TopAttackTypesPanel() {
           </div>
         ))}
       </div>
+      )}
     </div>
   )
 }
 
-export function TopSourceIPsPanel() {
+export function TopSourceIPsPanel({
+  items,
+}: {
+  items: { ip: string; flows: number | string }[]
+}) {
   return (
     <div className="bg-card rounded-xl p-5 border border-border/40">
       <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider mb-4">
         Top Source IPs
       </h3>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Sin IPs con ataques en el conjunto actual.</p>
+      ) : (
       <div className="space-y-3">
-        {topSourceIPs.map((ip) => (
+        {items.map((ip) => (
           <div key={ip.ip} className="flex items-center justify-between">
             <span className="text-sm text-[#00b4ff] font-mono">{ip.ip}</span>
             <span className="text-xs text-[#14b8a6] bg-[#14b8a6]/10 px-2 py-0.5 rounded">
-              {ip.flows} flows
+              {typeof ip.flows === "number" ? ip.flows.toLocaleString() : ip.flows} flows
             </span>
           </div>
         ))}
       </div>
+      )}
     </div>
   )
 }

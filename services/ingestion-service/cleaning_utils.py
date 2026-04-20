@@ -3,6 +3,9 @@ Cleaning utilities for CICIDS-2017 dataset
 Handles NaN values, infinite values, and data validation
 """
 
+import socket
+import struct
+
 import numpy as np
 import pandas as pd
 from typing import Dict, Any, Optional
@@ -46,6 +49,49 @@ NUMERIC_COLUMNS = [
 ]
 
 
+def canonicalize_cicids_column_names(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    bertvankeulen/cicids-2017 y otros CSV usan nombres distintos a los del mirror 'cleaned'
+    (p. ej. Src IP dec, Total Fwd Packet). Los alineamos con lo que esperan validate_row y analytics.
+    """
+    pairs = [
+        ('Src IP dec', 'Src IP'),
+        ('Dst IP dec', 'Dst IP'),
+        ('Source IP', 'Src IP'),
+        ('Destination IP', 'Dst IP'),
+        ('Source Port', 'Src Port'),
+        ('Destination Port', 'Dst Port'),
+        ('Total Fwd Packet', 'Total Fwd Packets'),
+        ('Total Bwd packets', 'Total Bwd Packets'),
+        ('Total Bwd Packet', 'Total Bwd Packets'),
+        ('Total Length of Fwd Packet', 'Total Length of Fwd Packets'),
+        ('Total Length of Bwd Packet', 'Total Length of Bwd Packets'),
+    ]
+    renames = {o: n for o, n in pairs if o in df.columns and n not in df.columns}
+    if renames:
+        df = df.rename(columns=renames)
+    return df
+
+
+def materialize_decimal_ipv4_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """bertvankeulen CSV guarda IPv4 como entero 32-bit; lo pasamos a string dotted-quad."""
+    for col in ('Src IP', 'Dst IP'):
+        if col not in df.columns or not pd.api.types.is_numeric_dtype(df[col]):
+            continue
+
+        def to_dotted(v: Any) -> Any:
+            if pd.isna(v):
+                return v
+            try:
+                n = int(float(v)) & 0xFFFFFFFF
+                return socket.inet_ntoa(struct.pack('!I', n))
+            except (ValueError, OSError, struct.error, TypeError, OverflowError):
+                return str(v)
+
+        df[col] = df[col].map(to_dotted)
+    return df
+
+
 def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """
     Clean the dataframe by handling NaN and infinite values
@@ -58,7 +104,9 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """
     # Strip whitespace from column names
     df.columns = df.columns.str.strip()
-    
+    df = canonicalize_cicids_column_names(df)
+    df = materialize_decimal_ipv4_columns(df)
+
     # Replace infinite values with NaN first
     df = df.replace([np.inf, -np.inf], np.nan)
     

@@ -1,9 +1,11 @@
 {
-  "name": "my-project",
+  "name": "logguard",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
+    "dev": "bash scripts/dev-with-gateway.sh",
+    "dev:next": "next dev --webpack",
+    "dev:workers": "python3 scripts/run_logguard_workers.py",
     "build": "next build",
     "start": "next start",
     "lint": "eslint ."

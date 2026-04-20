@@ -2,6 +2,14 @@
 
 This is a [Next.js](https://nextjs.org) project bootstrapped with [v0](https://v0.app).
 
+## LogGuard — backend en la nube
+
+El pipeline (ingestión → RabbitMQ → analytics → MongoDB → **api-gateway**) se documenta para **despliegue en la nube** (Atlas, Rabbit administrado, tres servicios). No usamos `docker-compose` en este repo: cada microservicio tiene su `Dockerfile` bajo `services/` para quien despliegue con contenedores en un PaaS o en AWS.
+
+- **Guía**: [docs/CLOUD.md](docs/CLOUD.md)
+- **Variables**: crea un **`.env`** en la raíz (no se sube a Git) con `MONGODB_URL`, `RABBITMQ_URL`, Kaggle y `CORS_ORIGIN`; detalle en la guía.
+- **Workers locales**: con los `venv` de cada servicio listos, `python3 scripts/run_logguard_workers.py` arranca analytics + ingestion (ver [docs/CLOUD.md](docs/CLOUD.md)).
+
 ## Built with v0
 
 This repository is linked to a [v0](https://v0.app) project. You can continue developing by visiting the link below -- start new chats to make changes, and v0 will push commits directly to this repo. Every merge to `main` will automatically deploy.

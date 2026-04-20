@@ -3,6 +3,7 @@
  * Express + Socket.io server bridging backend services to the frontend
  */
 
+import './load-env.js';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
