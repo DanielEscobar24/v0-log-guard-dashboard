@@ -1,0 +1,84 @@
+{
+  "rabbit_version": "3.12",
+  "users": [
+    {
+      "name": "guest",
+      "password_hash": "guest",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": "administrator"
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "guest",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "queues": [
+    {
+      "name": "raw_logs",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 3600000
+      }
+    },
+    {
+      "name": "processed_logs",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 3600000
+      }
+    },
+    {
+      "name": "alerts",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "logguard.events",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false
+    }
+  ],
+  "bindings": [
+    {
+      "source": "logguard.events",
+      "vhost": "/",
+      "destination": "raw_logs",
+      "destination_type": "queue",
+      "routing_key": "logs.raw"
+    },
+    {
+      "source": "logguard.events",
+      "vhost": "/",
+      "destination": "processed_logs",
+      "destination_type": "queue",
+      "routing_key": "logs.processed"
+    },
+    {
+      "source": "logguard.events",
+      "vhost": "/",
+      "destination": "alerts",
+      "destination_type": "queue",
+      "routing_key": "logs.alert"
+    }
+  ]
+}
