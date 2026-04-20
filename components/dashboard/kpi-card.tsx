@@ -15,6 +15,8 @@ interface KPICardProps {
   sparklineColor?: string
 }
 
+const DEFAULT_SPARKLINE = [20, 28, 18, 35, 26, 40, 30, 34, 22, 38, 29, 33]
+
 export function KPICard({ 
   title, 
   value, 
@@ -25,8 +27,7 @@ export function KPICard({
   sparklineColor = "#00b4ff"
 }: KPICardProps) {
   const gradientId = useId()
-  const chartData = sparklineData?.map((v, i) => ({ value: v, index: i })) || 
-    Array.from({ length: 12 }, (_, i) => ({ value: Math.random() * 100, index: i }))
+  const chartData = (sparklineData ?? DEFAULT_SPARKLINE).map((v, i) => ({ value: v, index: i }))
 
   return (
     <div className="bg-card rounded-xl p-5 border border-border/40 relative overflow-hidden">

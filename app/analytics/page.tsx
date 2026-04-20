@@ -22,10 +22,16 @@ const COLORS = ['#00b4ff', '#f59e0b', '#14b8a6']
 
 export default function AnalyticsPage() {
   const [synapsing, setSynapsing] = useState(true)
+  const [miniBars, setMiniBars] = useState<number[] | null>(null)
   
   useEffect(() => {
     const timer = setTimeout(() => setSynapsing(false), 3000)
     return () => clearTimeout(timer)
+  }, [])
+
+  useEffect(() => {
+    // Evita hydration mismatch: SSR debe ser determinista.
+    setMiniBars(Array.from({ length: 6 }, () => 20 + Math.random() * 30))
   }, [])
 
   const totalEvents = attackDistribution.reduce((sum, item) => sum + item.value, 0) * 18.42
@@ -106,11 +112,11 @@ export default function AnalyticsPage() {
                 </div>
               </div>
               <div className="flex gap-0.5">
-                {[...Array(6)].map((_, i) => (
+                {(miniBars ?? [32, 28, 40, 26, 36, 30]).map((h, i) => (
                   <div 
                     key={i} 
                     className="w-2 bg-[#14b8a6]/60"
-                    style={{ height: `${20 + Math.random() * 30}px` }}
+                    style={{ height: `${h}px` }}
                   />
                 ))}
               </div>

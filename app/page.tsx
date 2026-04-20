@@ -21,7 +21,7 @@ export default function DashboardPage() {
             value={kpiData.totalFlows.value}
             change={kpiData.totalFlows.change}
             trend={kpiData.totalFlows.trend}
-            sparklineColor="#f97316"
+            sparklineColor="#00b4ff"
           />
           <KPICard 
             title="Attacks" 
