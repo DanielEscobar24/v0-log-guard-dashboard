@@ -1,7 +1,7 @@
 {
-  "name": "logguard-api-gateway",
+  "name": "api-log-guard",
   "version": "1.0.0",
-  "description": "LogGuard API Gateway - Express + Socket.io server",
+  "description": "LogGuard API Log Guard - Express + Socket.io server",
   "type": "module",
   "main": "server.js",
   "scripts": {
@@ -9,12 +9,10 @@
     "dev": "node --watch server.js"
   },
   "dependencies": {
-    "dotenv": "^16.4.5",
-    "amqplib": "^0.10.4",
     "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
     "express": "^4.18.2",
-    "mongodb": "^6.3.0",
-    "socket.io": "^4.7.4"
+    "mongodb": "^6.3.0"
   },
   "engines": {
     "node": ">=18.0.0"

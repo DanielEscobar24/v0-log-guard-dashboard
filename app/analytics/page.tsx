@@ -44,13 +44,13 @@ export default function AnalyticsPage() {
         {/* Title Row */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-foreground uppercase tracking-wide">Analytics Engine</h1>
-            <p className="text-sm text-muted-foreground mt-1">Deep-packet analysis and heuristic traffic distribution.</p>
+            <h1 className="text-2xl font-bold text-foreground uppercase tracking-wide">Motor de analítica</h1>
+            <p className="text-sm text-muted-foreground mt-1">Análisis de tráfico, protocolos y distribución heurística.</p>
           </div>
           
           <div className="flex items-center gap-2 px-3 py-1.5 bg-[#14b8a6]/10 rounded-full border border-[#14b8a6]/30">
             <span className="w-2 h-2 rounded-full bg-[#14b8a6] animate-pulse" />
-            <span className="text-sm text-[#14b8a6] font-medium">Live Stream: 4.2k eps</span>
+            <span className="text-sm text-[#14b8a6] font-medium">Flujo en vivo: 4.2k eps</span>
           </div>
         </div>
 
@@ -59,7 +59,7 @@ export default function AnalyticsPage() {
           {/* Attack Distribution */}
           <div className="bg-card rounded-xl p-5 border border-border/40">
             <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">
-              Attack Distribution
+              Distribución de ataques
             </h3>
             
             <div className="flex items-center gap-6">
@@ -83,7 +83,7 @@ export default function AnalyticsPage() {
                 </ResponsiveContainer>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <span className="text-3xl font-bold text-foreground">{Math.round(totalEvents).toLocaleString()}</span>
-                  <span className="text-xs text-muted-foreground uppercase">Total Events</span>
+                  <span className="text-xs text-muted-foreground uppercase">Eventos totales</span>
                 </div>
               </div>
               
@@ -104,11 +104,11 @@ export default function AnalyticsPage() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Flow Duration
+                  Duración de flujo
                 </h3>
                 <div className="flex items-baseline gap-2 mt-1">
                   <span className="text-3xl font-bold text-foreground">240ms</span>
-                  <span className="text-sm text-[#14b8a6]">Avg Latency</span>
+                  <span className="text-sm text-[#14b8a6]">Latencia promedio</span>
                 </div>
               </div>
               <div className="flex gap-0.5">
@@ -152,7 +152,7 @@ export default function AnalyticsPage() {
           {/* Top Protocols */}
           <div className="bg-card rounded-xl p-5 border border-border/40">
             <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">
-              Top Protocols
+              Protocolos principales
             </h3>
             
             <div className="space-y-4">
@@ -176,7 +176,7 @@ export default function AnalyticsPage() {
           {/* Active Port Concentration */}
           <div className="bg-card rounded-xl p-5 border border-border/40">
             <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">
-              Active Port Concentration
+              Concentración de puertos activos
             </h3>
             
             <div className="grid grid-cols-4 gap-2 mb-4">
@@ -205,15 +205,15 @@ export default function AnalyticsPage() {
             <div className="flex items-center gap-4 text-xs">
               <div className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded bg-[#ef4444]/50" />
-                <span className="text-[#94a3b8]">CRITICAL</span>
+                <span className="text-[#94a3b8]">CRÍTICO</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded bg-[#334155]" />
-                <span className="text-[#94a3b8]">ACTIVE</span>
+                <span className="text-[#94a3b8]">ACTIVO</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded bg-card border border-border/40" />
-                <span className="text-[#94a3b8]">IDLE</span>
+                <span className="text-[#94a3b8]">INACTIVO</span>
               </div>
             </div>
           </div>
@@ -224,16 +224,16 @@ export default function AnalyticsPage() {
           <div className="text-center py-8">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-[#00b4ff]/10 rounded-full border border-[#00b4ff]/30 mb-6">
               <Sparkles className="w-4 h-4 text-[#00b4ff]" />
-              <span className="text-sm text-[#00b4ff] font-medium">NEURAL ENGINE V2.0</span>
+              <span className="text-sm text-[#00b4ff] font-medium">MOTOR NEURONAL V2.0</span>
             </div>
             
             <h2 className="text-4xl font-bold text-foreground mb-4">
-              <span className="gradient-text">AI-Powered Insights</span> – Coming Soon
+              <span className="gradient-text">Insights impulsados por IA</span> – Próximamente
             </h2>
             
             <p className="text-muted-foreground max-w-xl mx-auto leading-relaxed">
-              Our proprietary LLM is currently training on your network patterns. Soon, 
-              {"you'll"} receive automated root-cause analysis and predictive threat intelligence.
+              Nuestro modelo está entrenándose con los patrones de tu red. Muy pronto
+              recibirás análisis automatizado de causa raíz e inteligencia predictiva de amenazas.
             </p>
           </div>
           
@@ -264,7 +264,7 @@ export default function AnalyticsPage() {
               </div>
               
               <p className="text-xs text-[#64748b] uppercase tracking-widest">
-                Synapsing Network Nodes...
+                Sincronizando nodos de red...
               </p>
             </div>
           </div>

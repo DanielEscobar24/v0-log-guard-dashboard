@@ -194,3 +194,37 @@
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
+/* KPI neon accents: restrained in light mode, glowy in dark mode */
+.kpi-neon-white {
+  color: #16161a;
+}
+
+.dark .kpi-neon-white {
+  color: #f5f7ff;
+  text-shadow:
+    0 0 6px rgba(255, 255, 255, 0.45),
+    0 0 18px rgba(173, 198, 255, 0.2);
+}
+
+.kpi-neon-red {
+  color: #b42318;
+}
+
+.dark .kpi-neon-red {
+  color: #ff5a6b;
+  text-shadow:
+    0 0 8px rgba(255, 90, 107, 0.45),
+    0 0 20px rgba(255, 90, 107, 0.18);
+}
+
+.kpi-neon-green {
+  color: #0f766e;
+}
+
+.dark .kpi-neon-green {
+  color: #19e6cf;
+  text-shadow:
+    0 0 8px rgba(25, 230, 207, 0.42),
+    0 0 20px rgba(25, 230, 207, 0.16);
+}

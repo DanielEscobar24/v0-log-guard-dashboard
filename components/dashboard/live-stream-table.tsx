@@ -1,17 +1,277 @@
 "use client"
 
-import { Download, Settings, RefreshCw } from "lucide-react"
+import { memo, useEffect, useMemo, useState } from "react"
+import { format } from "date-fns"
+import type { DateRange, DayMouseEventHandler } from "react-day-picker"
+import { CalendarDays, Download, Loader2, RefreshCw, Zap } from "lucide-react"
+import { List, type RowComponentProps } from "react-window"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
-import type { BackendLog } from "@/lib/api"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { getLogs, type BackendLog } from "@/lib/api"
 import { labelBadgeClass } from "@/lib/label-styles"
+import { toast } from "@/hooks/use-toast"
+import { cn } from "@/lib/utils"
 
 interface LiveStreamTableProps {
-  logs: BackendLog[]
-  onRefresh?: () => void
+  initialLogs?: BackendLog[]
 }
 
-export function LiveStreamTable({ logs, onRefresh }: LiveStreamTableProps) {
+type SeveritySummaryItem = {
+  name: string
+  value: number
+  percentage: number
+  color: string
+}
+
+type LogRowProps = {
+  logs: BackendLog[]
+  formatTime: (timestamp: string) => string
+}
+
+const SEVERITY_LABELS: Record<string, string> = {
+  critical: "Crítica",
+  high: "Alta",
+  medium: "Media",
+  low: "Baja",
+}
+
+const SEVERITY_ORDER: Record<string, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+}
+
+const SEVERITY_COLORS: Record<string, string> = {
+  critical: "#ff4d6d",
+  high: "#ff9f1c",
+  medium: "#00c2ff",
+  low: "#7dffb3",
+}
+
+const MAX_ANALYSIS_DAYS = 15
+const LOG_ROW_HEIGHT = 56
+const LOG_TABLE_HEIGHT = 500
+const LOG_GRID_COLUMNS = "minmax(110px,0.85fr) minmax(180px,1.35fr) minmax(180px,1.35fr) minmax(120px,0.8fr) minmax(130px,0.95fr) minmax(140px,0.9fr)"
+
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
+}
+
+function addMonths(date: Date, months: number) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1)
+}
+
+function getCalendarAnchorMonth(range: DateRange, today: Date) {
+  if (range.from && range.to) {
+    const fromMonth = range.from.getMonth()
+    const fromYear = range.from.getFullYear()
+    const toMonth = range.to.getMonth()
+    const toYear = range.to.getFullYear()
+
+    if (fromMonth === toMonth && fromYear === toYear) {
+      return addMonths(startOfMonth(range.to), -1)
+    }
+
+    return startOfMonth(range.from)
+  }
+
+  if (range.from) {
+    return addMonths(startOfMonth(range.from), -1)
+  }
+
+  return addMonths(startOfMonth(today), -1)
+}
+
+function formatDateInput(date: Date) {
+  return format(date, "yyyy-MM-dd")
+}
+
+function formatDateTimeRange(dateValue: string, endOfDay = false) {
+  return `${dateValue}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z`
+}
+
+function toDateOnly(value: string) {
+  return new Date(`${value}T00:00:00`)
+}
+
+function pluralizeDays(days: number) {
+  return `${days} día${days === 1 ? "" : "s"}`
+}
+
+function buildCsv(logs: BackendLog[]) {
+  const headers = ["timestamp", "src_ip", "dst_ip", "protocol", "duration", "label", "severity"]
+  const rows = logs.map((log) =>
+    [
+      log.timestamp,
+      log.src_ip,
+      log.dst_ip,
+      log.protocol,
+      log.duration ?? "",
+      log.label === "Benign" ? "Normal" : log.label,
+      log.severity ?? "",
+    ]
+      .map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`)
+      .join(","),
+  )
+
+  return [headers.join(","), ...rows].join("\n")
+}
+
+function getRangeValidationMessage(range: DateRange) {
+  if (!range.from) {
+    return "Debes seleccionar una fecha inicial."
+  }
+
+  const from = startOfDay(range.from)
+  const to = startOfDay(range.to ?? range.from)
+
+  if (from.getTime() > to.getTime()) {
+    return "La fecha inicial no puede ser posterior a la fecha final."
+  }
+
+  const totalDays = Math.floor((to.getTime() - from.getTime()) / 86400000) + 1
+  if (totalDays > MAX_ANALYSIS_DAYS) {
+    return `El rango supera el límite de ${MAX_ANALYSIS_DAYS} días por ${pluralizeDays(totalDays - MAX_ANALYSIS_DAYS)}.`
+  }
+
+  return null
+}
+
+function getDraftHelperMessage(range: DateRange) {
+  if (!range.from) {
+    return "Selecciona una fecha inicial."
+  }
+
+  if (!range.to) {
+    return "Haz clic en una fecha final o acepta para analizar solo este día."
+  }
+
+  return getRangeValidationMessage(range) ?? `Máximo ${MAX_ANALYSIS_DAYS} días por análisis.`
+}
+
+const LogVirtualRow = memo(function LogVirtualRow({
+  index,
+  style,
+  logs,
+  formatTime,
+}: RowComponentProps<LogRowProps>) {
+  const log = logs[index]
+
+  if (!log) {
+    return null
+  }
+
+  return (
+    <div
+      style={style}
+      className={cn(
+        "border-b border-border/30 transition-colors hover:bg-background/30",
+        index === 0 && "animate-in fade-in duration-500",
+      )}
+    >
+      <div
+        className="grid h-full items-center px-5"
+        style={{ gridTemplateColumns: LOG_GRID_COLUMNS }}
+      >
+        <div className="pr-4 font-mono text-sm text-muted-foreground">{formatTime(log.timestamp)}</div>
+        <div
+          className={cn(
+            "pr-4 font-mono text-sm",
+            log.label !== "Benign" ? "text-[#ef4444]" : "text-[#00b4ff]",
+          )}
+        >
+          {log.src_ip}
+        </div>
+        <div className="pr-4 font-mono text-sm text-foreground">{log.dst_ip}</div>
+        <div className="pr-4 text-sm text-muted-foreground">{log.protocol}</div>
+        <div className="pr-4 text-sm text-muted-foreground">{log.duration?.toFixed(3) ?? "—"}</div>
+        <div>
+          <span className={cn("rounded px-2.5 py-1 text-xs font-medium", labelBadgeClass(log.label))}>
+            {(log.label === "Benign" ? "Normal" : log.label).toUpperCase()}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+})
+
+export function LiveStreamTable({ initialLogs = [] }: LiveStreamTableProps) {
+  const today = useMemo(() => startOfDay(new Date()), [])
+  const [logs, setLogs] = useState<BackendLog[]>(initialLogs)
+  const [totalMatchingLogs, setTotalMatchingLogs] = useState(initialLogs.length)
+  const [isLoading, setIsLoading] = useState(false)
+  const [isRunningDiagnosis, setIsRunningDiagnosis] = useState(false)
+  const [isRangePickerOpen, setIsRangePickerOpen] = useState(false)
+  const [rangeTouched, setRangeTouched] = useState(false)
+  const [appliedRange, setAppliedRange] = useState<DateRange>({ from: today, to: today })
+  const [draftRange, setDraftRange] = useState<DateRange>({ from: today, to: today })
+  const [visibleMonth, setVisibleMonth] = useState<Date>(() => getCalendarAnchorMonth({ from: today, to: today }, today))
+  const [severitySummary, setSeveritySummary] = useState<SeveritySummaryItem[]>([])
+
+  const formattedAppliedRange = useMemo(
+    () => ({
+      from: appliedRange.from ? formatDateInput(appliedRange.from) : "",
+      to: appliedRange.to ? formatDateInput(appliedRange.to) : "",
+    }),
+    [appliedRange.from, appliedRange.to],
+  )
+
+  const appliedRangeError = useMemo(() => getRangeValidationMessage(appliedRange), [appliedRange])
+  const draftRangeError = useMemo(() => getRangeValidationMessage(draftRange), [draftRange])
+  const isAppliedRangeValid = !appliedRangeError
+  const isDraftRangeValid = !draftRangeError
+
+  const orderedSeveritySummary = useMemo(
+    () =>
+      [...severitySummary].sort((a, b) => {
+        const left = SEVERITY_ORDER[a.name.toLowerCase()] ?? 99
+        const right = SEVERITY_ORDER[b.name.toLowerCase()] ?? 99
+        return left - right
+      }),
+    [severitySummary],
+  )
+
+  const rangeLabel = useMemo(() => {
+    if (appliedRange.from && appliedRange.to) {
+      return `${format(appliedRange.from, "dd MMM yyyy")} - ${format(appliedRange.to, "dd MMM yyyy")}`
+    }
+    if (appliedRange.from) {
+      return `${format(appliedRange.from, "dd MMM yyyy")} - Selecciona fin`
+    }
+    return "Selecciona un rango"
+  }, [appliedRange.from, appliedRange.to])
+
+  const draftTriggerLabel = useMemo(() => {
+    if (draftRange.from && draftRange.to) {
+      return `${format(draftRange.from, "dd MMM yyyy")} - ${format(draftRange.to, "dd MMM yyyy")}`
+    }
+    if (draftRange.from) {
+      return `${format(draftRange.from, "dd MMM yyyy")} - Selecciona fin`
+    }
+    return "Selecciona un rango"
+  }, [draftRange.from, draftRange.to])
+
+  const draftRangeLabel = useMemo(() => {
+    if (draftRange.from && draftRange.to) {
+      return `${format(draftRange.from, "MM/dd/yyyy")} 12:00 AM ~ ${format(draftRange.to, "MM/dd/yyyy")} 11:59 PM`
+    }
+    if (draftRange.from) {
+      return `${format(draftRange.from, "MM/dd/yyyy")} 12:00 AM ~ Selecciona fin`
+    }
+    return "Selecciona un rango"
+  }, [draftRange.from, draftRange.to])
+
+  const helperText = useMemo(() => {
+    if (!rangeTouched) return `Máximo ${MAX_ANALYSIS_DAYS} días por análisis.`
+    return getDraftHelperMessage(draftRange)
+  }, [draftRange, rangeTouched])
+
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp)
     if (Number.isNaN(date.getTime())) return timestamp
@@ -23,95 +283,355 @@ export function LiveStreamTable({ logs, onRefresh }: LiveStreamTableProps) {
     })
   }
 
+  const loadLogs = async (from: string, to: string) => {
+    setIsLoading(true)
+    try {
+      const firstPage = await getLogs({
+        limit: 500,
+        page: 1,
+        from: formatDateTimeRange(from),
+        to: formatDateTimeRange(to, true),
+      })
+
+      let allLogs = firstPage.logs
+      const totalPages = firstPage.pagination.pages
+
+      if (totalPages > 1) {
+        const pageRequests = Array.from({ length: totalPages - 1 }, (_, index) =>
+          getLogs({
+            limit: 500,
+            page: index + 2,
+            from: formatDateTimeRange(from),
+            to: formatDateTimeRange(to, true),
+          }),
+        )
+
+        const remainingPages = await Promise.all(pageRequests)
+        allLogs = [...allLogs, ...remainingPages.flatMap((page) => page.logs)]
+      }
+
+      setLogs(allLogs)
+      setTotalMatchingLogs(firstPage.pagination.total)
+
+      const entries = Object.entries(firstPage.summary?.bySeverity ?? {})
+        .filter(([, value]) => value > 0)
+        .sort((a, b) => {
+          const left = SEVERITY_ORDER[a[0].toLowerCase()] ?? 99
+          const right = SEVERITY_ORDER[b[0].toLowerCase()] ?? 99
+          return left - right
+        })
+
+      const total = entries.reduce((sum, [, value]) => sum + value, 0) || 1
+
+      setSeveritySummary(
+        entries.map(([name, value]) => ({
+          name,
+          value,
+          percentage: (value / total) * 100,
+          color: SEVERITY_COLORS[name.toLowerCase()] ?? "#19e6cf",
+        })),
+      )
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "No se pudieron cargar los registros",
+        description: error instanceof Error ? error.message : "Inténtalo de nuevo en unos segundos.",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!isAppliedRangeValid || !formattedAppliedRange.from || !formattedAppliedRange.to) return
+    void loadLogs(formattedAppliedRange.from, formattedAppliedRange.to)
+  }, [formattedAppliedRange.from, formattedAppliedRange.to, isAppliedRangeValid])
+
+  useEffect(() => {
+    if (isRangePickerOpen) {
+      setDraftRange(appliedRange)
+      setRangeTouched(false)
+      setVisibleMonth(getCalendarAnchorMonth(appliedRange, today))
+    }
+  }, [isRangePickerOpen, appliedRange, today])
+
+  const handleRangeDayClick: DayMouseEventHandler = (day, modifiers) => {
+    if (modifiers.disabled) return
+
+    const clickedDay = startOfDay(day)
+    setRangeTouched(true)
+
+    setDraftRange((current) => {
+      if (!current.from || (current.from && current.to)) {
+        return { from: clickedDay, to: undefined }
+      }
+
+      const currentFrom = startOfDay(current.from)
+      if (clickedDay.getTime() < currentFrom.getTime()) {
+        return { from: clickedDay, to: currentFrom }
+      }
+
+      return { from: currentFrom, to: clickedDay }
+    })
+  }
+
+  const applyPresetRange = (days: number) => {
+    const end = today
+    const start = new Date(end)
+    start.setDate(end.getDate() - (days - 1))
+    setRangeTouched(true)
+    const nextRange = { from: start, to: end }
+    setDraftRange(nextRange)
+    setVisibleMonth(getCalendarAnchorMonth(nextRange, today))
+  }
+
+  const applyYesterdayRange = () => {
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+    setRangeTouched(true)
+    const nextRange = { from: yesterday, to: yesterday }
+    setDraftRange(nextRange)
+    setVisibleMonth(getCalendarAnchorMonth(nextRange, today))
+  }
+
+  const applyDraftRange = () => {
+    setRangeTouched(true)
+    if (!isDraftRangeValid || !draftRange.from) return
+    setAppliedRange({
+      from: draftRange.from,
+      to: draftRange.to ?? draftRange.from,
+    })
+    setIsRangePickerOpen(false)
+  }
+
+  const cancelDraftRange = () => {
+    setDraftRange(appliedRange)
+    setRangeTouched(false)
+    setIsRangePickerOpen(false)
+  }
+
+  const handleDownload = () => {
+    const csv = buildCsv(logs)
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `logguard-registros-${formattedAppliedRange.from}-${formattedAppliedRange.to}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  const runDiagnosis = async () => {
+    if (!isAppliedRangeValid) return
+    setIsRunningDiagnosis(true)
+    await new Promise((resolve) => setTimeout(resolve, 1600))
+    setIsRunningDiagnosis(false)
+    toast({
+      title: "Diagnóstico en ejecución",
+      description: `Se inició un análisis simulado del ${formattedAppliedRange.from} al ${formattedAppliedRange.to}. Este flujo se conectará con Analítica.`,
+    })
+  }
+
   return (
     <div className="bg-card rounded-xl border border-border/40">
-      <div className="flex items-center justify-between px-5 py-4">
-        <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">
-          CICIDS-2017 — últimos registros (Mongo)
-        </h3>
-        <div className="flex items-center gap-2">
-          {onRefresh && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
-              onClick={() => onRefresh()}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+      <div className="flex flex-col gap-4 px-5 py-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0 space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">
+              CICIDS-2017 — últimos registros (Mongo)
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Combina el detalle reciente con un resumen rápido de severidad sobre la colección{" "}
+              <code className="rounded bg-background/60 px-1 py-0.5">logs</code>.
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Mostrando {logs.length.toLocaleString()} de {totalMatchingLogs.toLocaleString()} registros del rango aplicado.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Popover open={isRangePickerOpen} onOpenChange={setIsRangePickerOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="h-11 min-w-[320px] justify-start rounded-lg border-border bg-card text-left font-normal shadow-sm"
+                >
+                  <CalendarDays className="mr-2 h-4 w-4" />
+                  <span className="truncate">{isRangePickerOpen ? draftTriggerLabel : rangeLabel}</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-auto border-border bg-card p-0 shadow-2xl">
+                <div className="border-b border-border px-5 py-3">
+                  <p className="text-sm font-semibold text-foreground">{draftRangeLabel}</p>
+                </div>
+
+                <Calendar
+                  mode="range"
+                  weekStartsOn={1}
+                  numberOfMonths={2}
+                  selected={draftRange}
+                  month={visibleMonth}
+                  onMonthChange={setVisibleMonth}
+                  className="rounded-xl bg-card"
+                  classNames={{
+                    root: "rounded-xl bg-card p-5",
+                    months: "flex flex-col gap-6 md:flex-row md:gap-8",
+                    month: "flex flex-col gap-4",
+                    month_caption: "mb-2 text-foreground",
+                    caption_label: "text-foreground font-semibold",
+                    weekdays: "mb-2 grid grid-cols-7 gap-0",
+                    weekday: "text-center text-xs tracking-wide text-muted-foreground",
+                    week: "grid grid-cols-7 gap-0",
+                    day: "text-foreground",
+                    outside: "text-muted-foreground/45",
+                    today:
+                      "rounded-md border border-sky-400/80 text-foreground shadow-[0_0_0_1px_rgba(56,189,248,0.18)] data-[selected=true]:border-primary-foreground data-[selected=true]:rounded-none",
+                    range_start: "bg-primary",
+                    range_middle: "bg-accent",
+                    range_end: "bg-primary",
+                  }}
+                  onDayClick={handleRangeDayClick}
+                  disabled={{ after: today }}
+                />
+
+                <div className="border-t border-border px-5 py-3">
+                  <p
+                    className={cn(
+                      "text-xs",
+                      rangeTouched && draftRangeError ? "text-destructive" : "text-muted-foreground",
+                    )}
+                  >
+                    {helperText}
+                  </p>
+
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="ghost" className="h-8 px-3 text-xs text-primary" onClick={() => applyPresetRange(1)}>
+                        Hoy
+                      </Button>
+                      <Button type="button" variant="ghost" className="h-8 px-3 text-xs text-primary" onClick={applyYesterdayRange}>
+                        Ayer
+                      </Button>
+                      <Button type="button" variant="ghost" className="h-8 px-3 text-xs text-primary" onClick={() => applyPresetRange(7)}>
+                        Últimos 7 días
+                      </Button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Button type="button" variant="ghost" className="h-9 px-3" onClick={cancelDraftRange}>
+                        Cancelar
+                      </Button>
+                      <Button type="button" className="h-9 px-4" onClick={applyDraftRange} disabled={!isDraftRangeValid}>
+                        Aceptar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          {orderedSeveritySummary.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {orderedSeveritySummary.map((item) => (
+                <div key={item.name} className="rounded-lg border border-border/50 bg-background/40 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {SEVERITY_LABELS[item.name.toLowerCase()] ?? item.name}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-end gap-2">
+                    <span className="text-sm font-semibold text-foreground">{item.value.toLocaleString()}</span>
+                    <span className="text-xs text-muted-foreground">{item.percentage.toFixed(1)}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent">
+        </div>
+
+        <div className="flex flex-wrap items-center justify-end gap-2 self-end xl:max-w-[320px] xl:self-start">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:bg-accent hover:text-foreground"
+            onClick={() => {
+              if (isAppliedRangeValid && formattedAppliedRange.from && formattedAppliedRange.to) {
+                void loadLogs(formattedAppliedRange.from, formattedAppliedRange.to)
+              }
+            }}
+          >
+            <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:bg-accent hover:text-foreground"
+            onClick={handleDownload}
+            disabled={logs.length === 0}
+          >
             <Download className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent">
-            <Settings className="h-4 w-4" />
+
+          <Button
+            type="button"
+            onClick={() => void runDiagnosis()}
+            disabled={isRunningDiagnosis || !isAppliedRangeValid}
+            className="h-9 rounded-lg bg-sidebar-accent/70 px-3 text-sidebar-primary hover:bg-sidebar-accent"
+          >
+            {isRunningDiagnosis ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Analizando...
+              </>
+            ) : (
+              <>
+                <Zap className="mr-2 h-4 w-4" />
+                Ejecutar diagnóstico
+              </>
+            )}
           </Button>
         </div>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="bg-background/30">
-              <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Timestamp
-              </th>
-              <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                SRC IP
-              </th>
-              <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                DST IP
-              </th>
-              <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Proto
-              </th>
-              <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Duración (s)
-              </th>
-              <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Label
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {logs.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-5 py-8 text-center text-sm text-muted-foreground">
-                  No hay logs. Verifica que el api-gateway esté en marcha y que la colección{" "}
-                  <code className="rounded bg-muted px-1">logs</code> tenga documentos.
-                </td>
-              </tr>
-            ) : (
-              logs.map((log, index) => (
-                <tr
-                  key={`${log.id}-${index}`}
-                  className={cn("transition-colors hover:bg-background/30", index === 0 && "animate-in fade-in duration-500")}
-                >
-                  <td className="px-5 py-3 font-mono text-sm text-muted-foreground">{formatTime(log.timestamp)}</td>
-                  <td
-                    className={cn(
-                      "px-5 py-3 font-mono text-sm",
-                      log.label !== "Benign" ? "text-[#ef4444]" : "text-[#00b4ff]",
-                    )}
-                  >
-                    {log.src_ip}
-                  </td>
-                  <td className="px-5 py-3 font-mono text-sm text-foreground">{log.dst_ip}</td>
-                  <td className="px-5 py-3 text-sm text-muted-foreground">{log.protocol}</td>
-                  <td className="px-5 py-3 text-sm text-muted-foreground">{log.duration?.toFixed(3) ?? "—"}</td>
-                  <td className="px-5 py-3">
-                    <span
-                      className={cn("rounded px-2.5 py-1 text-xs font-medium", labelBadgeClass(log.label))}
-                    >
-                      {log.label.toUpperCase()}
-                    </span>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+        <div className="min-w-[980px]">
+          <div className="border-b border-border/40 bg-background/30">
+            <div
+              className="grid px-5 py-3"
+              style={{ gridTemplateColumns: LOG_GRID_COLUMNS }}
+            >
+              <div className="pr-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Hora</div>
+              <div className="pr-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">IP origen</div>
+              <div className="pr-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">IP destino</div>
+              <div className="pr-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Protocolo</div>
+              <div className="pr-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Duración (s)</div>
+              <div className="text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Clasificación</div>
+            </div>
+          </div>
+
+          {logs.length === 0 ? (
+            <div className="px-5 py-8 text-center text-sm text-muted-foreground">
+              No hay logs para el rango seleccionado. Verifica que el api-log-guard esté en marcha y que la colección{" "}
+              <code className="rounded bg-muted px-1">logs</code> tenga documentos.
+            </div>
+          ) : (
+            <List
+              rowComponent={LogVirtualRow}
+              rowCount={logs.length}
+              rowHeight={() => LOG_ROW_HEIGHT}
+              rowProps={{ logs, formatTime }}
+              overscanCount={8}
+              defaultHeight={LOG_TABLE_HEIGHT}
+              style={{ height: LOG_TABLE_HEIGHT, width: "100%" }}
+            />
+          )}
+        </div>
       </div>
     </div>
   )

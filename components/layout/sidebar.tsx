@@ -19,10 +19,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { microservices } from "@/lib/mock-data"
 
 const navItems = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/live-logs", label: "Live Logs", icon: FileText },
-  { href: "/alerts", label: "Alerts", icon: AlertTriangle },
-  { href: "/analytics", label: "Analytics", icon: TrendingUp },
+  { href: "/", label: "Panel", icon: LayoutDashboard },
+  { href: "/live-logs", label: "Logs en vivo", icon: FileText },
+  { href: "/alerts", label: "Alertas", icon: AlertTriangle },
+  { href: "/analytics", label: "Analítica", icon: TrendingUp },
 ]
 
 export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
@@ -57,7 +57,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           </div>
           <div>
             <h1 className="text-lg font-bold text-sidebar-foreground">LogGuard</h1>
-            <p className="text-xs text-muted-foreground tracking-wider">NETWORK OBSERVABILITY</p>
+            <p className="text-xs text-muted-foreground tracking-wider">OBSERVABILIDAD DE RED</p>
           </div>
         </div>
 
@@ -89,7 +89,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         {/* Scan Results */}
         {isScanning && (
           <div className="mx-4 mb-4 p-3 bg-background/35 rounded-lg">
-            <p className="text-xs text-muted-foreground mb-2">System Scan in Progress...</p>
+            <p className="text-xs text-muted-foreground mb-2">Diagnóstico del sistema en curso...</p>
             <div className="space-y-1.5">
               {microservices.map((service) => {
                 const isChecked = scanResults.includes(service.name)
@@ -114,28 +114,6 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         )}
 
-        {/* Run Diagnostics Button */}
-        <div className="px-4 pb-4">
-          <Button 
-            onClick={runDiagnostics}
-            disabled={isScanning}
-            variant="outline"
-            className="w-full h-11 bg-sidebar-accent/40 hover:bg-sidebar-accent text-sidebar-primary border-border/40"
-          >
-            {isScanning ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Scanning...
-              </>
-            ) : (
-              <>
-                <Zap className="w-4 h-4 mr-2" />
-                Run Diagnostics
-              </>
-            )}
-          </Button>
-        </div>
-
         {/* User Profile */}
         <div className="px-4 py-4">
           <div className="flex items-center gap-3">
@@ -145,7 +123,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             </Avatar>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-sidebar-foreground truncate">Admin_Root</p>
-              <p className="text-xs text-muted-foreground truncate">System Administrator</p>
+              <p className="text-xs text-muted-foreground truncate">Administrador del sistema</p>
             </div>
           </div>
         </div>
@@ -157,8 +135,8 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           <div className="flex items-center gap-3 px-4 py-3 bg-card/70 backdrop-blur-xl border border-border/40 rounded-lg shadow-[0_16px_40px_rgba(0,0,0,0.12)]">
             <CheckCircle className="w-5 h-5 text-emerald-500" />
             <div>
-              <p className="text-sm font-medium text-foreground">System Healthy</p>
-              <p className="text-xs text-muted-foreground">All Microservices Operational</p>
+              <p className="text-sm font-medium text-foreground">Sistema operativo</p>
+              <p className="text-xs text-muted-foreground">Todos los servicios responden correctamente</p>
             </div>
           </div>
         </div>

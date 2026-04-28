@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Desarrollo: Next.js + api-gateway (el .env de la raíz lo carga el gateway vía load-env.js).
+# Desarrollo: Next.js + api-log-guard (el .env de la raíz lo carga el backend vía load-env.js).
 # analytics-engine / ingestion-service solo llevan datos Kaggle→BD; no van aquí. Para esa ingesta: npm run dev:workers
 set -euo pipefail
 
@@ -18,7 +18,7 @@ trap cleanup INT TERM EXIT
 declare -a PIDS=()
 next dev --webpack &
 PIDS+=("$!")
-npm run dev --prefix "$ROOT/services/api-gateway" &
+npm run dev --prefix "$ROOT/services/api-log-guard" &
 PIDS+=("$!")
 
 wait

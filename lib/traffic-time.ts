@@ -1,5 +1,5 @@
 /**
- * El api-gateway agrupa en Mongo con $dateToString en UTC → strings tipo "2024-04-20 21:00".
+ * El api-log-guard agrupa en Mongo con $dateToString en UTC → strings tipo "2024-04-20 21:00".
  * Aquí las interpretamos como UTC y mostramos la hora en **local** con reloj **24 h**.
  */
 export function formatTrafficBucketAxisLabel(timestamp: string | undefined): string {

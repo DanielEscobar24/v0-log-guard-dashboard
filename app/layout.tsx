@@ -2,14 +2,15 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
+import { Toaster } from '@/components/ui/toaster'
 import './globals.css'
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-sans' })
 const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-mono' })
 
 export const metadata: Metadata = {
-  title: 'LogGuard - Network Observability',
-  description: 'Centralized Network Log Monitoring System with real-time threat detection and analytics',
+  title: 'LogGuard - Observabilidad de Red',
+  description: 'Sistema centralizado de monitoreo de logs de red con detección de amenazas y analítica en tiempo real',
   generator: 'v0.app',
   icons: {
     icon: [
@@ -42,7 +43,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="es" suppressHydrationWarning>
       <body className={`${geist.variable} ${geistMono.variable} min-h-screen font-sans antialiased bg-background text-foreground`}>
         <ThemeProvider
           attribute="class"
@@ -51,6 +52,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           {children}
+          <Toaster />
         </ThemeProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>

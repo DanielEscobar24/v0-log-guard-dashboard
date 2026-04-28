@@ -1,9 +1,10 @@
 /**
- * Cliente HTTP hacia el api-gateway (Mongo + stats).
- * Configura en .env.local: NEXT_PUBLIC_API_URL=http://localhost:4000
+ * Cliente HTTP del dashboard.
+ *
+ * El navegador habla siempre con rutas relativas de Next (`/api/...`).
+ * En Vercel, Next actúa como proxy server-side hacia el gateway real usando `API_GATEWAY_URL`,
+ * así evitamos exponer `localhost` o URLs internas en el build del frontend.
  */
-
-export const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/$/, "")
 
 export interface DashboardStats {
   totalLogs: number
@@ -36,6 +37,9 @@ export interface BackendLog {
 export interface LogsResponse {
   logs: BackendLog[]
   pagination: { page: number; limit: number; total: number; pages: number }
+  summary?: {
+    bySeverity: Record<string, number>
+  }
 }
 
 export interface TrafficBucket {
@@ -48,6 +52,11 @@ export interface TrafficBucket {
 export interface AttackTypeRow {
   type: string
   count: number
+}
+
+export interface AlertTrendBucket {
+  timestamp: string
+  activeAlerts: number
 }
 
 export interface TopSourceRow {
@@ -70,38 +79,53 @@ export interface BackendAlert {
 }
 
 async function apiGet<T>(path: string): Promise<T> {
-  const url = `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`
-  const res = await fetch(url, { cache: "no-store" })
+  const normalizedPath = path.startsWith("/api/") ? path : `/api${path.startsWith("/") ? path : `/${path}`}`
+  const res = await fetch(normalizedPath, { cache: "no-store" })
   if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText}`)
+    let detail = `${res.status} ${res.statusText}`
+    try {
+      const payload = (await res.json()) as { error?: string }
+      if (payload?.error) {
+        detail = payload.error
+      }
+    } catch {}
+    throw new Error(detail)
   }
   return res.json() as Promise<T>
 }
 
 export function getDashboardStats() {
-  return apiGet<DashboardStats>("/api/stats/dashboard")
+  return apiGet<DashboardStats>("/stats/dashboard")
 }
 
-export function getLogs(params?: { limit?: number; page?: number }) {
+export function getLogs(params?: { limit?: number; page?: number; from?: string; to?: string }) {
   const q = new URLSearchParams()
   if (params?.limit) q.set("limit", String(params.limit))
   if (params?.page) q.set("page", String(params.page))
+  if (params?.from) q.set("from", params.from)
+  if (params?.to) q.set("to", params.to)
   const suffix = q.toString() ? `?${q}` : ""
-  return apiGet<LogsResponse>(`/api/logs${suffix}`)
+  return apiGet<LogsResponse>(`/logs${suffix}`)
 }
 
-export function getTrafficStats(hours = 24) {
-  return apiGet<TrafficBucket[]>(`/api/stats/traffic?hours=${hours}`)
+export function getTrafficStats(hours?: number) {
+  const suffix = typeof hours === "number" ? `?hours=${hours}` : ""
+  return apiGet<TrafficBucket[]>(`/stats/traffic${suffix}`)
 }
 
 export function getAttackDistribution() {
-  return apiGet<AttackTypeRow[]>("/api/stats/attacks")
+  return apiGet<AttackTypeRow[]>("/stats/attacks")
+}
+
+export function getAlertTrend(hours?: number) {
+  const suffix = typeof hours === "number" ? `?hours=${hours}` : ""
+  return apiGet<AlertTrendBucket[]>(`/stats/alerts-trend${suffix}`)
 }
 
 export function getTopSources(limit = 8) {
-  return apiGet<TopSourceRow[]>(`/api/stats/top-sources?limit=${limit}`)
+  return apiGet<TopSourceRow[]>(`/stats/top-sources?limit=${limit}`)
 }
 
 export function getAlerts(limit = 100) {
-  return apiGet<BackendAlert[]>(`/api/alerts?limit=${limit}`)
+  return apiGet<BackendAlert[]>(`/alerts?limit=${limit}`)
 }

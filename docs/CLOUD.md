@@ -6,7 +6,7 @@ Este documento es la referencia para ejecutar el **backend** (microservicios + d
 
 | Servicio | Carpeta | Rol |
 |----------|---------|-----|
-| **api-gateway** | `services/api-gateway/` | HTTP + Socket.io hacia el front; lee Mongo y consume colas `processed_logs` / `alerts`. |
+| **api-log-guard** | `services/api-log-guard/` | HTTP + Socket.io hacia el front; lee Mongo y consume colas `processed_logs` / `alerts`. |
 | **analytics-engine** | `services/analytics-engine/` | Consume `raw_logs`, escribe en Mongo, publica `processed_logs` y `alerts`. |
 | **ingestion-service** | `services/ingestion-service/` | Descarga el dataset (Kaggle) y publica a `raw_logs`. |
 
@@ -19,7 +19,7 @@ Este documento es la referencia para ejecutar el **backend** (microservicios + d
 
 Los tres servicios leen URLs completas, no el `docker-compose` anterior.
 
-### api-gateway (`services/api-gateway/server.js`)
+### api-log-guard (`services/api-log-guard/server.js`)
 
 | Variable | Ejemplo / notas |
 |----------|-----------------|
@@ -72,13 +72,19 @@ Carga **`.env`** de la raíz, levanta **analytics** (espera 2 s) y luego **inges
 ## Orden sugerido al desplegar
 
 1. Crear **Atlas** y **RabbitMQ**; copiar `MONGODB_URL` y `RABBITMQ_URL`.
-2. Desplegar **api-gateway** y comprobar `GET /health` (y `GET /api/logs` cuando ya haya datos).
+2. Desplegar **api-log-guard** y comprobar `GET /health` (y `GET /api/logs` cuando ya haya datos).
 3. Desplegar **analytics-engine** (sin él, los mensajes en `raw_logs` no se procesan).
 4. Desplegar **ingestion-service** (requiere salida a internet hacia Kaggle).
 
-## Front (Next)
+## Front (Next / Vercel)
 
-El front no define el pipeline; solo debe apuntar al gateway público (REST y/o Socket.io). Define las variables en tu **`.env`** en la raíz cuando conectes datos reales.
+El frontend debe quedarse liviano. La recomendación es:
+
+- Desplegar **solo Next.js** en **Vercel**.
+- Desplegar el **api-log-guard** y los workers en otro servicio apto para procesos persistentes.
+- Configurar en Vercel la variable **`API_GATEWAY_URL`** con la URL pública HTTPS del gateway.
+
+Con eso, el navegador consumirá `https://tu-front.vercel.app/api/...` y Next hará de proxy hacia el gateway real. Así no aparecen `localhost` ni endpoints internos en el build del cliente.
 
 ## Nota sobre Docker
 

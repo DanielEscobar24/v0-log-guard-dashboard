@@ -4,11 +4,19 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [v0](https://v
 
 ## LogGuard — backend en la nube
 
-El pipeline (ingestión → RabbitMQ → analytics → MongoDB → **api-gateway**) se documenta para **despliegue en la nube** (Atlas, Rabbit administrado, tres servicios). No usamos `docker-compose` en este repo: cada microservicio tiene su `Dockerfile` bajo `services/` para quien despliegue con contenedores en un PaaS o en AWS.
+El pipeline (ingestión → RabbitMQ → analytics → MongoDB → **api-log-guard**) se documenta para **despliegue en la nube** (Atlas, Rabbit administrado, tres servicios). No usamos `docker-compose` en este repo: cada microservicio tiene su `Dockerfile` bajo `services/` para quien despliegue con contenedores en un PaaS o en AWS.
 
 - **Guía**: [docs/CLOUD.md](docs/CLOUD.md)
 - **Variables**: crea un **`.env`** en la raíz (no se sube a Git) con `MONGODB_URL`, `RABBITMQ_URL`, Kaggle y `CORS_ORIGIN`; detalle en la guía.
 - **Workers locales**: con los `venv` de cada servicio listos, `python3 scripts/run_logguard_workers.py` arranca analytics + ingestion (ver [docs/CLOUD.md](docs/CLOUD.md)).
+
+## Frontend en Vercel
+
+El frontend ya no necesita exponer `NEXT_PUBLIC_API_URL` para hablar con el gateway. Ahora usa un proxy interno de Next:
+
+- En local, si no defines nada, el proxy apunta a `http://localhost:4000`.
+- En Vercel, define `API_GATEWAY_URL=https://tu-api-log-guard...` en las variables del proyecto.
+- El navegador solo consume `/api/...` del mismo dominio del frontend.
 
 ## Built with v0
 

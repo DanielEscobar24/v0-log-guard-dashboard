@@ -1,5 +1,5 @@
 /**
- * Colores de badge según etiqueta del backend (Benign, Port Scan, DDoS, …).
+ * Colores de badge según etiqueta del backend (Normal/Benign, Port Scan, DDoS, …).
  */
 
 export function labelBadgeClass(label: string): string {

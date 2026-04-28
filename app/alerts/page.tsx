@@ -29,7 +29,7 @@ export default function AlertsPage() {
   const [alerts, setAlerts] = useState<BackendAlert[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<"All" | "Critical" | "High">("All")
+  const [filter, setFilter] = useState<"Todas" | "Críticas" | "Altas">("Todas")
   const [currentPage, setCurrentPage] = useState(1)
   const [chartRows, setChartRows] = useState<{ name: string; percentage: number }[]>([])
 
@@ -69,9 +69,9 @@ export default function AlertsPage() {
 
   const filteredAlerts = alerts.filter((alert) => {
     const s = alert.severity.toLowerCase()
-    if (filter === "All") return true
-    if (filter === "Critical") return s === "critical"
-    if (filter === "High") return s === "high"
+    if (filter === "Todas") return true
+    if (filter === "Críticas") return s === "critical"
+    if (filter === "Altas") return s === "high"
     return true
   })
 
@@ -91,8 +91,8 @@ export default function AlertsPage() {
       <div className="p-6">
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Active Network Alerts</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Datos desde la colección `alerts` (api-gateway).</p>
+            <h1 className="text-2xl font-bold text-foreground">Alertas activas de red</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Datos desde la colección `alerts` (api-log-guard).</p>
           </div>
 
           <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end lg:w-auto">
@@ -102,7 +102,7 @@ export default function AlertsPage() {
             </Button>
             <div className="w-full overflow-x-auto">
               <div className="inline-flex whitespace-nowrap rounded-lg border border-border/40 bg-card p-1">
-                {(["All", "Critical", "High"] as const).map((f) => (
+                {(["Todas", "Críticas", "Altas"] as const).map((f) => (
                   <Button
                     key={f}
                     variant="ghost"
@@ -147,7 +147,7 @@ export default function AlertsPage() {
           <div className="rounded-xl border border-border/40 bg-card p-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Critical</p>
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Críticas</p>
                 <p className="mt-1 text-3xl font-bold text-[#00b4ff]">{loading ? "—" : stats.critical}</p>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#ef4444]/20">
@@ -158,7 +158,7 @@ export default function AlertsPage() {
           <div className="rounded-xl border border-border/40 bg-card p-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">High</p>
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Altas</p>
                 <p className="mt-1 text-3xl font-bold text-foreground">{loading ? "—" : stats.highSeverity}</p>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#f59e0b]/20">
@@ -185,22 +185,22 @@ export default function AlertsPage() {
               <thead>
                 <tr className="bg-background/30">
                   <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Severity
+                    Severidad
                   </th>
                   <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Time
+                    Hora
                   </th>
                   <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     SRC IP
                   </th>
                   <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Attack Type
+                    Tipo de ataque
                   </th>
                   <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Description
+                    Descripción
                   </th>
                   <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Status
+                    Estado
                   </th>
                 </tr>
               </thead>
@@ -237,7 +237,7 @@ export default function AlertsPage() {
                           )}
                         >
                           {alert.acknowledged ? <Lock className="h-3.5 w-3.5" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                          {alert.acknowledged ? "Ack" : "Open"}
+                          {alert.acknowledged ? "Reconocida" : "Abierta"}
                         </span>
                       </td>
                     </tr>
@@ -277,7 +277,7 @@ export default function AlertsPage() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className="rounded-xl border border-border/40 bg-card p-5 lg:col-span-2">
             <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-foreground">
-              Distribución de etiquetas (logs, ≠ Benign)
+              Distribución de etiquetas (logs, ≠ Normal)
             </h3>
             <div className="h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -303,7 +303,7 @@ export default function AlertsPage() {
           </div>
 
           <div className="rounded-xl border border-border/40 bg-card p-5">
-            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-foreground">Top vectores (logs)</h3>
+            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-foreground">Vectores principales (logs)</h3>
             <div className="space-y-4">
               {chartRows.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Sin datos de distribución.</p>

@@ -8,7 +8,7 @@ export interface TrafficChartPoint {
   time: string
   benign: number
   attacks: number
-  /** ISO/UTC del api-gateway (`YYYY-MM-DD HH:00`) para tooltips con fecha local. */
+  /** ISO/UTC del api-log-guard (`YYYY-MM-DD HH:00`) para tooltips con fecha local. */
   bucketUtc?: string
 }
 
@@ -105,7 +105,7 @@ export function TrafficChart({ data = [] }: TrafficChartProps) {
             Network Traffic Volume Over Time
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Ventana: <strong>últimas 24 horas</strong> (rodante) · Eje: hora local · Reloj <strong>24 h</strong>
+            Ventana: <strong>histórico completo</strong> · Inicio: primer registro disponible · Fin: último registro disponible
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-4 text-xs sm:mt-0.5">

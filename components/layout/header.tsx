@@ -1,12 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Menu } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ThemeToggle } from "@/components/theme-toggle"
 import { SidebarContent } from "@/components/layout/sidebar"
+import { ThemeToggle } from "@/components/theme-toggle"
+import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { Menu } from "lucide-react"
+import { useEffect, useState } from "react"
 
 export function Header() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -31,15 +30,15 @@ export function Header() {
               variant="ghost"
               size="icon"
               className="lg:hidden text-muted-foreground hover:text-foreground hover:bg-accent"
-              aria-label="Open navigation"
+              aria-label="Abrir navegación"
             >
               <Menu className="size-5" />
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="lg:hidden p-0 w-[260px] bg-sidebar border-border/40">
             <SheetHeader className="sr-only">
-              <SheetTitle>Navigation</SheetTitle>
-              <SheetDescription>Displays the mobile navigation menu.</SheetDescription>
+              <SheetTitle>Navegación</SheetTitle>
+              <SheetDescription>Muestra el menú de navegación móvil.</SheetDescription>
             </SheetHeader>
             <div className="h-full">
               <SidebarContent onNavigate={() => setSidebarOpen(false)} />
@@ -57,16 +56,16 @@ export function Header() {
       <div className="hidden md:flex items-center gap-3">
         <ThemeToggle />
 
-        <div className="flex items-center gap-2 pl-3">
+        {/* <div className="flex items-center gap-2 pl-3">
           <div className="text-right">
             <p className="text-sm font-medium text-foreground">Admin</p>
-            <p className="text-xs text-muted-foreground">System Root</p>
+            <p className="text-xs text-muted-foreground">Administrador raíz</p>
           </div>
           <Avatar className="w-9 h-9">
             <AvatarImage src="/placeholder-user.jpg" alt="Admin" />
             <AvatarFallback className="bg-primary/15 text-primary text-sm">A</AvatarFallback>
           </Avatar>
-        </div>
+        </div> */}
       </div>
     </header>
   )

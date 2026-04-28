@@ -75,7 +75,7 @@ export default function LiveLogsPage() {
       <div className="p-6">
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Live Logs</h1>
+            <h1 className="text-2xl font-bold text-foreground">Logs en vivo</h1>
             <div className="mt-1 flex items-center gap-2">
               <span className="flex items-center gap-1.5">
                 <span className="h-2 w-2 animate-pulse rounded-full bg-[#14b8a6]" />
@@ -119,7 +119,8 @@ export default function LiveLogsPage() {
 
         {error && (
           <div className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error} — Revisa <code className="rounded bg-muted px-1">NEXT_PUBLIC_API_URL</code> y el api-gateway.
+            {error} — Revisa <code className="rounded bg-muted px-1">API_GATEWAY_URL</code> en
+            Vercel o que el api-log-guard esté corriendo en `localhost:4000`.
           </div>
         )}
 
@@ -147,7 +148,7 @@ export default function LiveLogsPage() {
                     Label
                   </th>
                   <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Details
+                    Detalles
                   </th>
                 </tr>
               </thead>
@@ -189,7 +190,7 @@ export default function LiveLogsPage() {
                         <td className="px-5 py-4 text-sm text-muted-foreground">{log.duration?.toFixed(3) ?? "—"}</td>
                         <td className="px-5 py-4">
                           <span className={cn("rounded px-2.5 py-1 text-xs font-medium", labelBadgeClass(log.label))}>
-                            {log.label}
+                            {log.label === "Benign" ? "Normal" : log.label}
                           </span>
                         </td>
                         <td className="px-5 py-4">
@@ -229,11 +230,11 @@ export default function LiveLogsPage() {
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-[#14b8a6]" />
-              {normalPercent}% Benign
+              {normalPercent}% Normal
             </span>
             <span className="flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-[#ef4444]" />
-              {threatPercent}% Threat
+              {threatPercent}% Amenaza
             </span>
           </div>
         </div>

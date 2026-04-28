@@ -417,7 +417,7 @@ def process_message(ch, method, properties, body, mongo: MongoDBClient, rabbitmq
             # Store in MongoDB
             mongo.insert_log(log_entry)
             
-            # Publish to processed_logs queue for API Gateway
+            # Publish to processed_logs queue for api-log-guard
             rabbitmq.publish('processed_logs', asdict(log_entry))
             
             # Create alert if attack detected

@@ -3,7 +3,7 @@
 Arranca en paralelo analytics-engine e ingestion-service (cada uno con su .venv).
 
 Esos microservicios existen solo para el pipeline Kaggle → MongoDB (descarga / normalización /
-ingesta). No forman parte del servidor web ni del api-gateway; el dashboard solo necesita el
+ingesta). No forman parte del servidor web ni del api-log-guard; el dashboard solo necesita el
 gateway cuando lee datos ya guardados.
 
 Uso (desde la raíz del repo):

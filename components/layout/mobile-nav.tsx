@@ -6,10 +6,10 @@ import { cn } from "@/lib/utils"
 import { LayoutDashboard, FileText, AlertTriangle, TrendingUp } from "lucide-react"
 
 const navItems = [
-  { href: "/", label: "HOME", icon: LayoutDashboard },
+  { href: "/", label: "PANEL", icon: LayoutDashboard },
   { href: "/live-logs", label: "LOGS", icon: FileText },
-  { href: "/alerts", label: "ALERTS", icon: AlertTriangle },
-  { href: "/analytics", label: "ANALYTICS", icon: TrendingUp },
+  { href: "/alerts", label: "ALERTAS", icon: AlertTriangle },
+  { href: "/analytics", label: "ANÁLISIS", icon: TrendingUp },
 ]
 
 export function MobileNav() {
