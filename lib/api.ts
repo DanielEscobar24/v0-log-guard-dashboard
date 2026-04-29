@@ -11,6 +11,7 @@ export interface DashboardStats {
   totalAttacks: number
   totalBenign: number
   activeAlerts: number
+  acknowledgedAlerts: number
   attackRate: string | number
   byLabel: Record<string, number>
   bySeverity: Record<string, number>
@@ -105,6 +106,16 @@ export interface BackendAlert {
   message: string
   log_id: string
   acknowledged: boolean
+}
+
+export type AlertStatus = "open" | "acknowledged"
+
+export interface AlertGroupPayload {
+  type: string
+  source_ip: string
+  target_ip: string
+  anchor_timestamp?: string
+  acknowledged?: boolean
 }
 
 async function apiGet<T>(path: string): Promise<T> {
@@ -218,5 +229,25 @@ export function unacknowledgeAlert(id: string) {
       throw new Error(detail)
     }
     return res.json() as Promise<{ success: boolean }>
+  })
+}
+
+export function updateAlertGroupAcknowledgement(payload: AlertGroupPayload) {
+  return fetch("/api/alerts/group/acknowledge", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  }).then(async (res) => {
+    if (!res.ok) {
+      let detail = `${res.status} ${res.statusText}`
+      try {
+        const responsePayload = (await res.json()) as { error?: string }
+        if (responsePayload?.error) detail = responsePayload.error
+      } catch {}
+      throw new Error(detail)
+    }
+    return res.json() as Promise<{ success: boolean; matchedCount: number; modifiedCount: number; acknowledged: boolean }>
   })
 }

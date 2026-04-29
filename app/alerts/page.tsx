@@ -33,6 +33,7 @@ import {
   getAlertTrend,
   getAttackDistribution,
   unacknowledgeAlert,
+  updateAlertGroupAcknowledgement,
   type AlertTrendBucket,
   type AttackTypeRow,
   type BackendAlert,
@@ -44,6 +45,39 @@ import { alertSeverityClass, alertSeverityLabel, labelBadgeClass } from "@/lib/l
 type FilterMode = "Todas" | "Críticas" | "Altas" | "Reconocidas"
 
 const ATTACK_VECTOR_COLORS = ["#ff7a1a", "#00c2ff", "#a855f7", "#ff4d8d", "#ffe066"]
+const GROUPABLE_ATTACK_TYPES = new Set([
+  "ddos",
+  "port scan",
+  "brute force",
+  "web attack",
+  "sql injection",
+  "botnet",
+  "infiltration",
+  "heartbleed",
+])
+const ALERT_GROUP_WINDOW_MS = 10 * 60 * 1000
+
+function isGroupableAttackType(type: string) {
+  return GROUPABLE_ATTACK_TYPES.has(type.trim().toLowerCase())
+}
+
+function parseTimestamp(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function belongsToAlertGroup(candidate: BackendAlert, anchor: BackendAlert) {
+  if (candidate.type !== anchor.type) return false
+  if (candidate.source_ip !== anchor.source_ip) return false
+  if (candidate.target_ip !== anchor.target_ip) return false
+  if (!isGroupableAttackType(anchor.type)) return false
+
+  const candidateDate = parseTimestamp(candidate.timestamp)
+  const anchorDate = parseTimestamp(anchor.timestamp)
+  if (!candidateDate || !anchorDate) return false
+
+  return Math.abs(candidateDate.getTime() - anchorDate.getTime()) <= ALERT_GROUP_WINDOW_MS
+}
 
 function formatDateInput(date: Date) {
   const year = date.getFullYear()
@@ -204,14 +238,31 @@ export default function AlertsPage() {
     return Number.isNaN(date.getTime()) ? ts : date.toLocaleString("es-ES")
   }
 
+  const relatedAlertCount = useMemo(() => {
+    if (!selectedAlert || !isGroupableAttackType(selectedAlert.type)) return 1
+    return alerts.filter((alert) => belongsToAlertGroup(alert, selectedAlert)).length
+  }, [alerts, selectedAlert])
+
+  const handlesAlertGroup = Boolean(selectedAlert && isGroupableAttackType(selectedAlert.type) && relatedAlertCount > 1)
+
   const handleToggleAcknowledge = useCallback(async () => {
     if (!selectedAlert) return
     try {
       setAckLoadingId(selectedAlert.id)
-      if (selectedAlert.acknowledged) {
-        await unacknowledgeAlert(selectedAlert.id)
+      if (handlesAlertGroup) {
+        await updateAlertGroupAcknowledgement({
+          type: selectedAlert.type,
+          source_ip: selectedAlert.source_ip,
+          target_ip: selectedAlert.target_ip,
+          anchor_timestamp: selectedAlert.timestamp,
+          acknowledged: !selectedAlert.acknowledged,
+        })
       } else {
-        await acknowledgeAlert(selectedAlert.id)
+        if (selectedAlert.acknowledged) {
+          await unacknowledgeAlert(selectedAlert.id)
+        } else {
+          await acknowledgeAlert(selectedAlert.id)
+        }
       }
       await load()
       setConfirmDialogOpen(false)
@@ -226,13 +277,17 @@ export default function AlertsPage() {
     } finally {
       setAckLoadingId(null)
     }
-  }, [load, selectedAlert])
+  }, [handlesAlertGroup, load, selectedAlert])
 
   const dialogActionLabel = selectedAlert?.acknowledged ? "Anular" : "Reconocer"
   const dialogDescription = selectedAlert
     ? selectedAlert.acknowledged
-      ? "Seguro quieres realizar esta accion? La alerta volvera a quedar como abierta para continuar su seguimiento."
-      : "Seguro quieres realizar esta accion? La alerta quedara marcada como ya visualizada."
+      ? handlesAlertGroup
+        ? `Seguro quieres realizar esta accion? Se anulara el seguimiento del grupo y ${relatedAlertCount} alertas volveran a quedar abiertas.`
+        : "Seguro quieres realizar esta accion? La alerta volvera a quedar como abierta para continuar su seguimiento."
+      : handlesAlertGroup
+        ? `Seguro quieres realizar esta accion? Se marcara como visualizado todo el grupo asociado a este evento (${relatedAlertCount} alertas relacionadas).`
+        : "Seguro quieres realizar esta accion? La alerta quedara marcada como ya visualizada."
     : "Seguro quieres realizar esta accion?"
 
   return (
@@ -540,8 +595,12 @@ export default function AlertsPage() {
                       ? "Anulando..."
                       : "Reconociendo..."
                     : selectedAlert.acknowledged
-                      ? "Anular"
-                      : "Reconocer"}
+                      ? handlesAlertGroup
+                        ? "Anular grupo"
+                        : "Anular"
+                      : handlesAlertGroup
+                        ? "Reconocer grupo"
+                        : "Reconocer"}
                 </Button>
               )}
             </div>
@@ -600,6 +659,16 @@ export default function AlertsPage() {
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Descripción</p>
                   <p className="mt-2 text-sm text-foreground">{selectedAlert.message}</p>
                 </div>
+
+                {handlesAlertGroup && (
+                  <div className="rounded-lg border border-[#f59e0b]/25 bg-[#f59e0b]/8 px-3 py-2">
+                    <p className="text-xs uppercase tracking-wide text-[#f59e0b]">Seguimiento agrupado</p>
+                    <p className="mt-2 text-sm text-foreground">
+                      Este evento se gestiona como un grupo DDoS de {relatedAlertCount} alertas con el mismo origen,
+                      destino y tipo. La accion de reconocer o anular se aplica a todas en una sola operacion.
+                    </p>
+                  </div>
+                )}
 
                 <div className="rounded-lg bg-background/40 px-3 py-2">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Log relacionado</p>

@@ -8,9 +8,11 @@ export function labelBadgeClass(label: string): string {
   if (u.includes("ddos")) return "bg-[#ef4444] text-white"
   if (u.includes("port")) return "bg-[#f97316] text-white"
   if (u.includes("brute")) return "bg-[#f59e0b] text-[#0f172a]"
-  if (u.includes("web") || u.includes("sql")) return "bg-[#8b5cf6] text-white"
-  if (u.includes("bot")) return "bg-[#ef4444] text-white"
+  if (u.includes("web")) return "bg-[#8b5cf6] text-white"
+  if (u.includes("sql")) return "bg-[#7c3aed] text-white"
+  if (u.includes("bot")) return "bg-[#ec4899] text-white"
   if (u.includes("infiltration")) return "bg-[#f59e0b] text-[#0f172a]"
+  if (u.includes("heartbleed")) return "bg-[#dc2626] text-white"
   return "bg-[#64748b] text-white"
 }
 

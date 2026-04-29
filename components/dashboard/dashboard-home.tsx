@@ -35,8 +35,12 @@ const ATTACK_TYPE_COLORS: Record<string, string> = {
   portscan: "#00c2ff",
   "brute force": "#a855f7",
   bruteforce: "#a855f7",
-  bot: "#ff4d8d",
+  "web attack": "#8b5cf6",
+  "sql injection": "#7c3aed",
+  bot: "#ec4899",
+  botnet: "#ec4899",
   infiltration: "#ffe066",
+  heartbleed: "#dc2626",
   suspicious: "#7df9ff",
 }
 
@@ -205,7 +209,7 @@ export function DashboardHome() {
         </div>
 
         <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-4">
-          <div className="xl:col-span-3">
+          <div className="xl:col-span-2">
             <TrafficChart
               data={timelineToChartData(timeline)}
               totalFlows={stats?.totalLogs ?? 0}
@@ -224,6 +228,18 @@ export function DashboardHome() {
                 ? `${dominantProtocol.total.toLocaleString()} flujos observados, ${dominantProtocol.attacks.toLocaleString()} marcados como ataque.`
                 : "Sin suficientes datos agregados por protocolo."
             }
+          />
+          <KPICard
+            title="Alert Follow-up"
+            value={stats ? `${stats.activeAlerts}/${stats.acknowledgedAlerts}` : "—"}
+            titleClassName="text-[#f59e0b]"
+            valueClassName="text-[#f8fafc]"
+            subtitle={
+              stats
+                ? `${stats.activeAlerts.toLocaleString()} alertas siguen abiertas y ${stats.acknowledgedAlerts.toLocaleString()} ya fueron reconocidas.`
+                : "Sin resumen operativo de alertas."
+            }
+            detail="Este bloque refleja seguimiento operativo; reconocer alertas no elimina el ataque detectado de los logs."
           />
         </div>
 

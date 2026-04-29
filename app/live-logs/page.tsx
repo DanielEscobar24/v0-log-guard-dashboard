@@ -8,7 +8,17 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { List, type RowComponentProps } from "react-window"
 import { Monitor, Pause, Play } from "lucide-react"
-import { getDashboardStats, getFilteredTimeline, getLogs, type BackendLog, type DashboardStats, type FilteredTimelineBucket } from "@/lib/api"
+import {
+  getAlerts,
+  getDashboardStats,
+  getFilteredTimeline,
+  getLogs,
+  type AlertStatus,
+  type BackendAlert,
+  type BackendLog,
+  type DashboardStats,
+  type FilteredTimelineBucket,
+} from "@/lib/api"
 import { labelBadgeClass } from "@/lib/label-styles"
 
 const protocolColors: Record<string, string> = {
@@ -35,10 +45,15 @@ const LIVE_LOG_GRID_COLUMNS =
   "minmax(150px,1fr) minmax(180px,1fr) minmax(180px,1fr) minmax(110px,0.8fr) minmax(120px,0.9fr) minmax(140px,0.9fr)"
 
 type LiveLogRowProps = {
-  logs: BackendLog[]
+  logs: EnrichedLog[]
   selectedLogId: string | null
   onSelect: (logId: string) => void
   formatTime: (timestamp: string) => string
+}
+
+type EnrichedLog = BackendLog & {
+  alertStatus?: AlertStatus
+  alertCount?: number
 }
 
 const LiveLogVirtualRow = memo(function LiveLogVirtualRow({
@@ -78,6 +93,18 @@ const LiveLogVirtualRow = memo(function LiveLogVirtualRow({
           <span className={cn("rounded px-2.5 py-1 text-xs font-medium", labelBadgeClass(log.label))}>
             {log.label === "Benign" ? "Normal" : log.label}
           </span>
+          {log.alertStatus && (
+            <span
+              className={cn(
+                "ml-2 rounded border px-2 py-1 text-[11px] font-medium uppercase tracking-wide",
+                log.alertStatus === "acknowledged"
+                  ? "border-[#64748b]/40 bg-[#64748b]/15 text-[#94a3b8]"
+                  : "border-[#ef4444]/30 bg-[#ef4444]/10 text-[#ef4444]",
+              )}
+            >
+              {log.alertStatus === "acknowledged" ? "Reconocida" : "Abierta"}
+            </span>
+          )}
         </div>
       </div>
     </div>
@@ -85,7 +112,7 @@ const LiveLogVirtualRow = memo(function LiveLogVirtualRow({
 })
 
 export default function LiveLogsPage() {
-  const [logs, setLogs] = useState<BackendLog[]>([])
+  const [logs, setLogs] = useState<EnrichedLog[]>([])
   const [timeline, setTimeline] = useState<FilteredTimelineBucket[]>([])
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null)
@@ -93,24 +120,50 @@ export default function LiveLogsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const enrichLogsWithAlerts = useCallback((inputLogs: BackendLog[], relatedAlerts: BackendAlert[]) => {
+    const alertsByLogId = new Map<string, BackendAlert[]>()
+
+    for (const alert of relatedAlerts) {
+      if (!alert.log_id) continue
+      const current = alertsByLogId.get(alert.log_id) ?? []
+      current.push(alert)
+      alertsByLogId.set(alert.log_id, current)
+    }
+
+    return inputLogs.map((log) => {
+      const logAlerts = alertsByLogId.get(log.id) ?? []
+      const hasOpen = logAlerts.some((alert) => !alert.acknowledged)
+      const hasAcknowledged = logAlerts.some((alert) => alert.acknowledged)
+      const alertStatus: AlertStatus | undefined = hasOpen ? "open" : hasAcknowledged ? "acknowledged" : undefined
+
+      return {
+        ...log,
+        alertStatus,
+        alertCount: logAlerts.length,
+      }
+    })
+  }, [])
+
   const load = useCallback(async () => {
     try {
       setError(null)
-      const [logsResponse, timelineResponse, statsResponse] = await Promise.all([
+      const [logsResponse, timelineResponse, statsResponse, alertsResponse] = await Promise.all([
         getLogs({ limit: 50, page: 1 }),
         getFilteredTimeline(),
         getDashboardStats(),
+        getAlerts(500),
       ])
-      setLogs(logsResponse.logs)
+      const enrichedLogs = enrichLogsWithAlerts(logsResponse.logs, alertsResponse)
+      setLogs(enrichedLogs)
       setTimeline(timelineResponse)
       setStats(statsResponse)
-      setSelectedLogId((current) => current ?? logsResponse.logs[0]?.id ?? null)
+      setSelectedLogId((current) => current ?? enrichedLogs[0]?.id ?? null)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al cargar logs")
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [enrichLogsWithAlerts])
 
   useEffect(() => {
     void load()
@@ -142,6 +195,8 @@ export default function LiveLogsPage() {
   const normalPercent = logs.length ? ((normalCount / logs.length) * 100).toFixed(1) : "0"
   const threatPercent = logs.length ? ((threatCount / logs.length) * 100).toFixed(1) : "0"
   const selectedLog = logs.find((log) => log.id === selectedLogId) ?? logs[0] ?? null
+  const logsWithOpenAlerts = logs.filter((log) => log.alertStatus === "open").length
+  const logsWithAcknowledgedAlerts = logs.filter((log) => log.alertStatus === "acknowledged").length
 
   return (
     <DashboardLayout>
@@ -157,6 +212,11 @@ export default function LiveLogsPage() {
                 <span className="text-sm font-medium text-[#14b8a6]">MongoDB vía API</span>
               </span>
               <span className="text-sm text-muted-foreground">Colección `logs`</span>
+              {stats && (
+                <span className="text-sm text-muted-foreground">
+                  Seguimiento: {stats.activeAlerts} abiertas / {stats.acknowledgedAlerts} reconocidas
+                </span>
+              )}
             </div>
           </div>
 
@@ -277,6 +337,14 @@ export default function LiveLogsPage() {
               <div className="flex items-center justify-between">
                 <span>Estado de actualización</span>
                 <span>{isLive ? "Automático" : "Manual"}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Logs con alerta abierta</span>
+                <span>{logsWithOpenAlerts}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Logs con alerta reconocida</span>
+                <span>{logsWithAcknowledgedAlerts}</span>
               </div>
             </div>
           </div>

@@ -186,6 +186,38 @@ Motivo:
 - Colección `logs`: documentos en el formato que produce `analytics-engine`
 - Colección `alerts`: alertas con `acknowledged: true/false`
 
+### Correlación entre `logs` y `alerts`
+
+- `logs` conserva la evidencia detectada del tráfico.
+- `alerts` representa el seguimiento operativo de esa evidencia.
+- Reconocer una alerta no elimina ni reclasifica el log asociado; solo cambia su estado de atención.
+- La UI actual correlaciona `live-logs` con `alerts` principalmente por `log_id`.
+- El panel principal mantiene separadas dos lecturas:
+  - detección: volumen de ataques y severidades en `logs`
+  - seguimiento: alertas abiertas y reconocidas en `alerts`
+
+### Agrupación operativa de alertas
+
+El backend actual puede tratar varias alertas como un solo grupo operativo cuando coinciden estas condiciones:
+
+- mismo `type`
+- mismo `source_ip`
+- mismo `target_ip`
+- diferencia temporal de hasta `10` minutos respecto a la alerta ancla
+
+Los tipos contemplados para agrupación son:
+
+- `DDoS`
+- `Port Scan`
+- `Brute Force`
+- `Web Attack`
+- `SQL Injection`
+- `Botnet`
+- `Infiltration`
+- `Heartbleed`
+
+La acción de reconocer o anular un grupo se ejecuta con una sola petición HTTP y el gateway aplica un `updateMany(...)` sobre las alertas relacionadas.
+
 ## Comportamientos importantes en producción
 
 ### El dashboard no es streaming real

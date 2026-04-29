@@ -40,6 +40,19 @@ function alertsCollection() {
   return db.collection("alerts")
 }
 
+const GROUPABLE_ALERT_TYPES = new Set([
+  "ddos",
+  "port scan",
+  "brute force",
+  "web attack",
+  "sql injection",
+  "botnet",
+  "infiltration",
+  "heartbleed",
+])
+
+const ALERT_GROUP_WINDOW_MS = 10 * 60 * 1000
+
 function parsePositiveInt(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ""), 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
@@ -81,6 +94,37 @@ function buildTimestampRangeQuery(params = {}) {
     if (params.to) query.timestamp.$lte = params.to
   }
   return query
+}
+
+function parseTimestamp(value) {
+  const date = new Date(String(value ?? ""))
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function buildAlertGroupQuery({ type, source_ip, target_ip, anchorTimestamp }) {
+  const normalizedType = String(type ?? "").trim()
+  const normalizedTypeKey = normalizedType.toLowerCase()
+
+  const query = {
+    type: normalizedType,
+    source_ip: String(source_ip ?? "").trim(),
+    target_ip: String(target_ip ?? "").trim(),
+  }
+
+  if (!GROUPABLE_ALERT_TYPES.has(normalizedTypeKey)) {
+    return query
+  }
+
+  const anchorDate = parseTimestamp(anchorTimestamp)
+  if (!anchorDate) return query
+
+  const from = new Date(anchorDate.getTime() - ALERT_GROUP_WINDOW_MS).toISOString()
+  const to = new Date(anchorDate.getTime() + ALERT_GROUP_WINDOW_MS).toISOString()
+
+  return {
+    ...query,
+    timestamp: { $gte: from, $lte: to },
+  }
 }
 
 async function connectMongoDB() {
@@ -145,10 +189,11 @@ async function getLogs(params = {}) {
 async function getDashboardStats(params = {}) {
   const query = buildTimestampRangeQuery(params)
 
-  const [totalLogs, totalAttacks, activeAlerts, labelCounts, severityCounts] = await Promise.all([
+  const [totalLogs, totalAttacks, activeAlerts, acknowledgedAlerts, labelCounts, severityCounts] = await Promise.all([
     logsCollection().countDocuments(query),
     logsCollection().countDocuments({ ...query, label: { $ne: "Benign" } }),
     alertsCollection().countDocuments({ acknowledged: false }),
+    alertsCollection().countDocuments({ acknowledged: true }),
     logsCollection()
       .aggregate([{ $match: query }, { $group: { _id: "$label", count: { $sum: 1 } } }])
       .toArray(),
@@ -162,6 +207,7 @@ async function getDashboardStats(params = {}) {
     totalAttacks,
     totalBenign: totalLogs - totalAttacks,
     activeAlerts,
+    acknowledgedAlerts,
     attackRate: totalLogs > 0 ? ((totalAttacks / totalLogs) * 100).toFixed(2) : 0,
     byLabel: labelCounts.reduce((acc, row) => ({ ...acc, [row._id]: row.count }), {}),
     bySeverity: severityCounts.reduce((acc, row) => ({ ...acc, [row._id]: row.count }), {}),
@@ -322,6 +368,45 @@ app.get("/api/alerts", async (req, res) => {
   } catch (error) {
     console.error("Error fetching alerts:", error)
     res.status(500).json({ error: "Failed to fetch alerts" })
+  }
+})
+
+app.put("/api/alerts/group/acknowledge", async (req, res) => {
+  try {
+    const type = String(req.body?.type ?? "").trim()
+    const sourceIp = String(req.body?.source_ip ?? "").trim()
+    const targetIp = String(req.body?.target_ip ?? "").trim()
+    const anchorTimestamp = String(req.body?.anchor_timestamp ?? "").trim()
+    const acknowledged = req.body?.acknowledged
+    const nextValue = typeof acknowledged === "boolean" ? acknowledged : true
+
+    if (!type || !sourceIp || !targetIp) {
+      return res.status(400).json({ error: "type, source_ip and target_ip are required" })
+    }
+
+    const result = await alertsCollection().updateMany(
+      buildAlertGroupQuery({
+        type,
+        source_ip: sourceIp,
+        target_ip: targetIp,
+        anchorTimestamp,
+      }),
+      { $set: { acknowledged: nextValue } },
+    )
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: "Alert group not found" })
+    }
+
+    return res.json({
+      success: true,
+      acknowledged: nextValue,
+      matchedCount: result.matchedCount,
+      modifiedCount: result.modifiedCount,
+    })
+  } catch (error) {
+    console.error("Error acknowledging alert group:", error)
+    return res.status(500).json({ error: "Failed to acknowledge alert group" })
   }
 })
 
