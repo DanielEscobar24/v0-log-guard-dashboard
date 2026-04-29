@@ -1,91 +1,263 @@
-# LogGuard — despliegue en la nube (sin Docker Compose)
+# LogGuard en la nube
 
-Este documento es la referencia para ejecutar el **backend** (microservicios + datos) usando **servicios administrados** y **tres procesos** desplegados donde elijas (Railway, Render, Fly.io, AWS ECS/Fargate, una VM, etc.). No hace falta `docker-compose`: cada servicio ya tiene su propio `Dockerfile` en su carpeta si tu plataforma construye imágenes.
+Esta guía describe el despliegue del proyecto **tal como está hoy en el código**. La idea central es separar dos escenarios:
 
-## Qué hay que correr (3 microservicios)
+1. **Visualización sobre datos ya cargados**: solo necesitas `Next.js`, `api-log-guard` y `MongoDB`.
+2. **Pipeline completo de ingesta**: además necesitas `RabbitMQ`, `analytics-engine` e `ingestion-service`.
 
-| Servicio | Carpeta | Rol |
-|----------|---------|-----|
-| **api-log-guard** | `services/api-log-guard/` | HTTP + Socket.io hacia el front; lee Mongo y consume colas `processed_logs` / `alerts`. |
-| **analytics-engine** | `services/analytics-engine/` | Consume `raw_logs`, escribe en Mongo, publica `processed_logs` y `alerts`. |
-| **ingestion-service** | `services/ingestion-service/` | Descarga el dataset (Kaggle) y publica a `raw_logs`. |
+No hace falta `docker-compose`. Cada servicio ya tiene su `Dockerfile`, y también puedes desplegarlos como procesos separados en Railway, Render, Fly.io, ECS/Fargate, una VM o cualquier PaaS equivalente.
 
-## Infraestructura en la nube (recomendado)
+## Topología real
 
-- **MongoDB**: [MongoDB Atlas](https://www.mongodb.com/atlas) (o el proveedor que uses). Crea un cluster y la base `logguard` (o la que uses en la URI).
-- **RabbitMQ**: [CloudAMQP](https://www.cloudamqp.com/) o **Amazon MQ** (protocolo AMQP). Declara colas `raw_logs`, `processed_logs`, `alerts` con durable=true (o deja que los servicios las declaren al arrancar, como hace el código hoy).
+### Frontend
 
-## Variables de entorno (contrato real)
+- Carpeta: `./`
+- Stack: Next.js 16
+- Rol: renderiza la UI y hace proxy server-side de `/api/*` hacia el gateway usando `API_GATEWAY_URL`
 
-Los tres servicios leen URLs completas, no el `docker-compose` anterior.
+### Gateway
 
-### api-log-guard (`services/api-log-guard/server.js`)
+- Carpeta: `services/api-log-guard/`
+- Stack: Express + MongoDB driver
+- Rol real hoy:
+  - expone endpoints REST,
+  - lee `logs` y `alerts` desde MongoDB,
+  - no consume RabbitMQ,
+  - no usa Socket.IO aunque haya dependencias heredadas en el repo.
 
-| Variable | Ejemplo / notas |
-|----------|-----------------|
-| `PORT` | `4000` (o el que asigne el PaaS). |
-| `MONGODB_URL` | URI de Atlas, ej. `mongodb+srv://user:pass@cluster.mongodb.net/logguard?...` |
-| `RABBITMQ_URL` | URI AMQP del broker, ej. `amqps://user:pass@xxx.cloudamqp.com/vhost` |
-| `CORS_ORIGIN` | URL del front en producción, ej. `https://tu-app.vercel.app` |
+### Analytics engine
 
-### analytics-engine (`services/analytics-engine/main.py`)
+- Carpeta: `services/analytics-engine/`
+- Stack: Python + `pika` + `pymongo`
+- Rol:
+  - consume `raw_logs` desde RabbitMQ,
+  - transforma filas CICIDS-2017 al formato del frontend,
+  - inserta en MongoDB las colecciones `logs` y `alerts`,
+  - publica en las colas `processed_logs` y `alerts`.
 
-| Variable | Ejemplo / notas |
-|----------|-----------------|
-| `MONGODB_URL` | Igual que el gateway. |
-| `RABBITMQ_URL` | Igual que el gateway. |
-| `MODEL_PATH` | Ruta solo si montas un modelo `.pkl`; por defecto `/app/model` en contenedor. |
+### Ingestion service
 
-### ingestion-service (`services/ingestion-service/main.py`)
+- Carpeta: `services/ingestion-service/`
+- Stack: Python + `kagglehub` + `pandas` + `pika`
+- Rol:
+  - descarga el dataset desde Kaggle o lee CSV desde `LOCAL_DATASET_PATH`,
+  - limpia y valida filas,
+  - publica mensajes en la cola `raw_logs`.
 
-| Variable | Ejemplo / notas |
-|----------|-----------------|
-| `RABBITMQ_URL` | Igual que arriba. |
-| `KAGGLE_API_TOKEN` | **Recomendado** (kagglehub ≥ 0.4): token desde Ajustes → API (suele empezar por `KGAT_`). |
-| `KAGGLE_USERNAME` / `KAGGLE_KEY` | Credenciales “legacy”; si solo tienes token `KGAT_` en `KAGGLE_KEY`, el ingestion lo mapea a `KAGGLE_API_TOKEN` al descargar vía API. |
-| `KAGGLE_DATASET` | Opcional; por defecto `bertvankeulen/cicids-2017` (ejemplo oficial en Kaggle Hub). Otro mirror, p. ej. `ciaboreanuda/cicids2017-cleaned`, solo si tu cuenta tiene acceso vía API. |
-| `LOCAL_DATASET_PATH` | **Opcional**: ruta absoluta o relativa a una carpeta con `.csv` (recursivo). Si está definida y válida, **no** se llama a Kaggle (evita 403 por reglas/consentimiento no aceptados en la web). |
-| `STREAM_INTERVAL_MS` | Opcional, ej. `500`. |
-| `MAX_STREAM_ROWS` | Opcional; entero \> 0 = máximo de filas publicadas **por cada pasada** del stream **después** de unir los CSV. Vacío = sin tope. Si usas `SAMPLE_ROWS_PER_CSV`, suele convenir dejar esto vacío para publicar todas las filas de la muestra. |
-| `SAMPLE_ROWS_PER_CSV` | Opcional; entero \> 0 = solo las **primeras N filas de cada archivo .csv** (p. ej. 10 por día). Orden estable entre ficheros; el stream **no** mezcla filas al azar en este modo. |
-| `DATA_PATH` | Opcional; ruta writable si quieres volcar datos en disco. |
+## Qué desplegar según tu objetivo
 
-## Desarrollo local (Python)
+### Opción A: dashboard sobre Mongo ya poblado
 
-`ingestion-service` declara versiones de **`pandas` / `numpy` / `kagglehub`** con ruedas para **Python 3.13**. Si `pip install -r requirements.txt` intenta compilar pandas desde fuente y falla, borra `.venv` en esa carpeta y vuelve a instalar tras `git pull`.
+Despliega:
 
-Si RabbitMQ devuelve **`PRECONDITION_FAILED - Existing queue ... declared with other arguments`**, es casi siempre porque **dos servicios declararon la misma cola con opciones distintas**. Arranca siempre **analytics** antes o borra las colas en CloudAMQP y vuelve a declararlas con el mismo código.
+- MongoDB
+- `api-log-guard`
+- frontend Next.js
 
-Si **Kaggle** devuelve **`403`** aunque el log muestre el token (`KGAT_`): entra en Kaggle con la **misma cuenta** que creó el token, abre la página del dataset y **acepta reglas / términos** si aparecen (la API suele fallar hasta entonces). Alternativa inmediata: define **`LOCAL_DATASET_PATH`** con una carpeta que contenga los `.csv` descargados y descomprimidos **desde el navegador**; el servicio no llamará a la API de Kaggle.
+No necesitas:
 
-### Arranque local de los dos workers (Python)
+- RabbitMQ
+- `analytics-engine`
+- `ingestion-service`
 
-Con los `.venv` ya creados en `services/analytics-engine` y `services/ingestion-service`:
+Este es el camino más simple si:
 
-```bash
-cd /ruta/al/v0-log-guard-dashboard
-python3 scripts/run_logguard_workers.py
+- ya tienes una colección `logs`,
+- ya tienes una colección `alerts`,
+- o vas a cargar los documentos manualmente.
+
+### Opción B: pipeline completo
+
+Despliega:
+
+- MongoDB
+- RabbitMQ
+- `analytics-engine`
+- `ingestion-service`
+- `api-log-guard`
+- frontend Next.js
+
+Este modo sirve si quieres poblar MongoDB desde CICIDS-2017 usando los workers incluidos en el repo.
+
+## Infraestructura recomendada
+
+### MongoDB
+
+- Recomendado: MongoDB Atlas
+- Colecciones esperadas: `logs`, `alerts`
+
+### RabbitMQ
+
+- Recomendado: CloudAMQP, Amazon MQ o cualquier broker AMQP compatible
+- Colas usadas por el código:
+  - `raw_logs`
+  - `processed_logs`
+  - `alerts`
+
+## Comandos de arranque sugeridos
+
+| Servicio | Comando |
+|----------|---------|
+| Frontend Next.js | `npm run build && npm run start` |
+| `api-log-guard` | `npm start` |
+| `analytics-engine` | `python main.py` |
+| `ingestion-service` | `python main.py` |
+
+Notas:
+
+- En el frontend, ejecuta `npm install` en la raíz antes del build.
+- En `services/api-log-guard`, ejecuta `npm install` dentro de esa carpeta o usa tu `Dockerfile`.
+- En los servicios Python, crea el entorno e instala `requirements.txt` antes del arranque.
+
+## Variables de entorno reales
+
+### Frontend / Next.js
+
+| Variable | Uso real |
+|----------|----------|
+| `API_GATEWAY_URL` | URL base del gateway que consumirá el proxy `/api/*`. Ejemplo: `https://api-log-guard.tu-dominio.com` |
+| `NEXT_PUBLIC_API_URL` | Fallback heredado. El proxy aún la revisa, pero hoy la opción recomendada es `API_GATEWAY_URL`. |
+
+Notas:
+
+- En desarrollo, si no existe `API_GATEWAY_URL`, el proxy cae a `http://localhost:4000`.
+- En producción, si falta `API_GATEWAY_URL`, las rutas `/api/*` devolverán `503`.
+
+### api-log-guard
+
+| Variable | Uso real |
+|----------|----------|
+| `PORT` | Puerto HTTP del servicio. |
+| `MONGODB_URL` | URI de MongoDB. |
+| `MONGODB_DB_NAME` | Base de datos que leerá el gateway. |
+| `CORS_ORIGIN` | Origen permitido para llamadas directas al gateway. |
+
+Notas:
+
+- El código actual del gateway **no usa RabbitMQ**.
+- `ENABLE_RABBITMQ` puede aparecer en ejemplos viejos, pero hoy no se lee.
+- Si despliegas el servicio de forma independiente, configura estas variables en la plataforma; el helper `load-env.js` solo es cómodo para el monorepo local.
+
+### analytics-engine
+
+| Variable | Uso real |
+|----------|----------|
+| `MONGODB_URL` | URI de MongoDB. |
+| `RABBITMQ_URL` | URI del broker AMQP. |
+| `MODEL_PATH` | Declarada en configuración, pero el código actual no carga ningún modelo desde ahí. |
+
+Notas críticas:
+
+- El servicio escribe en la base **`logguard`** de forma fija (`self.client.logguard`).
+- Aunque el gateway permita elegir `MONGODB_DB_NAME`, el pipeline no respeta ese valor.
+- Si quieres que el dashboard vea lo que inserta `analytics-engine` sin tocar código, mantén `MONGODB_DB_NAME=logguard` en el gateway.
+
+### ingestion-service
+
+| Variable | Uso real |
+|----------|----------|
+| `RABBITMQ_URL` | URI del broker AMQP. |
+| `LOCAL_DATASET_PATH` | Si apunta a una carpeta válida con CSV, el servicio no llama a Kaggle. |
+| `KAGGLE_DATASET` | Dataset a descargar con `kagglehub`. Por defecto: `bertvankeulen/cicids-2017`. |
+| `KAGGLE_API_TOKEN` | Token actual recomendado por Kaggle Hub. |
+| `KAGGLE_USERNAME` / `KAGGLE_KEY` | Compatibilidad heredada; si `KAGGLE_KEY` empieza por `KGAT_`, el servicio lo copia a `KAGGLE_API_TOKEN`. |
+| `STREAM_INTERVAL_MS` | Tiempo entre mensajes publicados. |
+| `MAX_STREAM_ROWS` | Límite total de filas emitidas por pasada. |
+| `SAMPLE_ROWS_PER_CSV` | Recorta cada CSV a sus primeras `N` filas antes de combinar. |
+| `DATA_PATH` | Declarada en configuración, pero el código actual no la usa. |
+
+## Contrato operativo de datos
+
+### Formato de timestamps
+
+El proyecto actual funciona mejor si `timestamp` está guardado como **string ISO 8601**. Ejemplo:
+
+```json
+"timestamp": "2017-02-15T09:18:00Z"
 ```
 
-Carga **`.env`** de la raíz, levanta **analytics** (espera 2 s) y luego **ingestion**; **Ctrl+C** detiene ambos.
+Motivo:
 
-## Orden sugerido al desplegar
+- `/api/logs`, `/api/alerts` y varios endpoints de estadísticas filtran por `from`/`to` comparando directamente el campo `timestamp`.
+- Si importas datos con otro formato, los filtros por rango y parte de las agregaciones pueden comportarse mal.
 
-1. Crear **Atlas** y **RabbitMQ**; copiar `MONGODB_URL` y `RABBITMQ_URL`.
-2. Desplegar **api-log-guard** y comprobar `GET /health` (y `GET /api/logs` cuando ya haya datos).
-3. Desplegar **analytics-engine** (sin él, los mensajes en `raw_logs` no se procesan).
-4. Desplegar **ingestion-service** (requiere salida a internet hacia Kaggle).
+### Base de datos esperada
 
-## Front (Next / Vercel)
+- Colección `logs`: documentos en el formato que produce `analytics-engine`
+- Colección `alerts`: alertas con `acknowledged: true/false`
 
-El frontend debe quedarse liviano. La recomendación es:
+## Comportamientos importantes en producción
 
-- Desplegar **solo Next.js** en **Vercel**.
-- Desplegar el **api-log-guard** y los workers en otro servicio apto para procesos persistentes.
-- Configurar en Vercel la variable **`API_GATEWAY_URL`** con la URL pública HTTPS del gateway.
+### El dashboard no es streaming real
 
-Con eso, el navegador consumirá `https://tu-front.vercel.app/api/...` y Next hará de proxy hacia el gateway real. Así no aparecen `localhost` ni endpoints internos en el build del cliente.
+- La pantalla `/live-logs` usa polling cada `8s` cuando el usuario activa el modo en vivo.
+- No hay websockets ni suscripción push en el código actual.
 
-## Nota sobre Docker
+### El rango inicial puede dejar el dashboard vacío
 
-Los **`Dockerfile`** dentro de `services/*` sirven para **build en la nube** (CI/CD, ECS, etc.). Este repo ya no incluye `docker-compose.yml` para evitar mezclar “orquestación local” con el modelo mental de **URLs + tres servicios + Atlas + Rabbit**.
+- La pantalla principal y `/alerts` arrancan con el rango del día actual del navegador.
+- Si tus datos conservan fechas de CICIDS-2017, tendrás que seleccionar manualmente febrero/julio de 2017 para ver datos en esas vistas.
+
+### ingestion-service repite la carga
+
+Cuando `ingestion-service` termina de recorrer el dataset:
+
+- espera `5` segundos,
+- y vuelve a publicar el dataset desde el principio.
+
+Eso significa que, si el servicio permanece corriendo, seguirá insertando más documentos en MongoDB. Para una carga única controlada, detén el proceso después de la primera pasada o limita la muestra con `SAMPLE_ROWS_PER_CSV` / `MAX_STREAM_ROWS`.
+
+## Orden recomendado de despliegue
+
+### Si solo quieres visualizar datos existentes
+
+1. Crear MongoDB y cargar `logs` y `alerts`.
+2. Desplegar `api-log-guard` con `MONGODB_URL`, `MONGODB_DB_NAME`, `CORS_ORIGIN`.
+3. Verificar `GET /health`.
+4. Desplegar Next.js con `API_GATEWAY_URL` apuntando al gateway.
+5. Verificar en el frontend `/api/stats/dashboard` y `/api/logs?limit=1`.
+
+### Si también quieres poblar datos con el pipeline
+
+1. Crear MongoDB.
+2. Crear RabbitMQ.
+3. Desplegar `analytics-engine` con `MONGODB_URL` y `RABBITMQ_URL`.
+4. Desplegar `ingestion-service` con `RABBITMQ_URL` y `LOCAL_DATASET_PATH` o credenciales Kaggle.
+5. Desplegar `api-log-guard`.
+6. Desplegar Next.js con `API_GATEWAY_URL`.
+
+## Smoke tests recomendados
+
+### Gateway
+
+- `GET /health`
+- `GET /api/logs?limit=1`
+- `GET /api/stats/dashboard`
+- `GET /api/stats/protocols`
+
+### Frontend
+
+- Abrir `/`
+- Confirmar que el proxy responde sin errores `503`
+- Ajustar el rango del calendario si los datos están en 2017
+- Abrir `/alerts` y probar un `Reconocer` si existen alertas abiertas
+
+### Pipeline
+
+- Verificar que `raw_logs` recibe mensajes
+- Verificar que MongoDB recibe documentos en `logs`
+- Verificar que solo los ataques generan documentos en `alerts`
+
+## Observaciones para plataformas cloud
+
+- `api-log-guard` puede vivir en un servicio HTTP tradicional.
+- `analytics-engine` e `ingestion-service` necesitan procesos persistentes de background.
+- `ingestion-service` requiere salida a internet si descargará desde Kaggle.
+- Si usas `LOCAL_DATASET_PATH`, la plataforma debe montar esos archivos en el contenedor o en el filesystem disponible para el proceso.
+
+## Resumen de mínimos
+
+- **Visualización**: Next.js + `api-log-guard` + MongoDB
+- **Carga automática**: añadir RabbitMQ + `analytics-engine` + `ingestion-service`
+
+Ese es el estado real del proyecto hoy.

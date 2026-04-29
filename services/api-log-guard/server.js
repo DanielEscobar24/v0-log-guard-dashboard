@@ -233,10 +233,19 @@ async function getFilteredTrafficTimeline(params = {}) {
   }))
 }
 
-async function getAlertTrend(hours) {
-  const parsedHours = Number.parseInt(String(hours ?? ""), 10)
+async function getAlertTrend(params = {}) {
+  const parsedHours = Number.parseInt(String(params.hours ?? ""), 10)
   const useLookbackFilter = Number.isFinite(parsedHours) && parsedHours > 0
+  const rangeQuery = buildTimestampRangeQuery(params)
   const since = useLookbackFilter ? new Date(Date.now() - parsedHours * 60 * 60 * 1000) : null
+  const matchStage = {
+    acknowledged: false,
+    ...(Object.keys(rangeQuery).length > 0
+      ? rangeQuery
+      : useLookbackFilter
+        ? { timestampDate: { $gte: since } }
+        : { timestampDate: { $ne: null } }),
+  }
 
   const pipeline = [
     {
@@ -244,12 +253,7 @@ async function getAlertTrend(hours) {
         timestampDate: toTimestampDateExpression("$timestamp"),
       },
     },
-    {
-      $match: {
-        acknowledged: false,
-        ...(useLookbackFilter ? { timestampDate: { $gte: since } } : { timestampDate: { $ne: null } }),
-      },
-    },
+    { $match: matchStage },
     {
       $group: {
         _id: {
@@ -307,7 +311,7 @@ app.get("/api/logs/:id", async (req, res) => {
 app.get("/api/alerts", async (req, res) => {
   try {
     const limit = parsePositiveInt(req.query.limit, 50)
-    const query = {}
+    const query = buildTimestampRangeQuery(req.query)
 
     if (req.query.acknowledged !== undefined) {
       query.acknowledged = req.query.acknowledged === "true"
@@ -323,11 +327,13 @@ app.get("/api/alerts", async (req, res) => {
 
 app.put("/api/alerts/:id/acknowledge", async (req, res) => {
   try {
-    const result = await alertsCollection().updateOne({ id: req.params.id }, { $set: { acknowledged: true } })
+    const acknowledged = req.body?.acknowledged
+    const nextValue = typeof acknowledged === "boolean" ? acknowledged : true
+    const result = await alertsCollection().updateOne({ id: req.params.id }, { $set: { acknowledged: nextValue } })
     if (result.matchedCount === 0) {
       return res.status(404).json({ error: "Alert not found" })
     }
-    return res.json({ success: true })
+    return res.json({ success: true, acknowledged: nextValue })
   } catch (error) {
     console.error("Error acknowledging alert:", error)
     return res.status(500).json({ error: "Failed to acknowledge alert" })
@@ -424,7 +430,7 @@ app.get("/api/stats/attacks", async (req, res) => {
 
 app.get("/api/stats/alerts-trend", async (req, res) => {
   try {
-    res.json(await getAlertTrend(req.query.hours))
+    res.json(await getAlertTrend(req.query))
   } catch (error) {
     console.error("Error fetching alert trend:", error)
     res.status(500).json({ error: "Failed to fetch alert trend" })

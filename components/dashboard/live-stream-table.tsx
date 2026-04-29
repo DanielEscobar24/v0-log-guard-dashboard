@@ -182,12 +182,7 @@ const LogVirtualRow = memo(function LogVirtualRow({
         style={{ gridTemplateColumns: LOG_GRID_COLUMNS }}
       >
         <div className="pr-4 font-mono text-sm text-muted-foreground">{formatTime(log.timestamp)}</div>
-        <div
-          className={cn(
-            "pr-4 font-mono text-sm",
-            log.label !== "Benign" ? "text-[#ef4444]" : "text-[#00b4ff]",
-          )}
-        >
+        <div className="pr-4 font-mono text-sm text-foreground">
           {log.src_ip}
         </div>
         <div className="pr-4 font-mono text-sm text-foreground">{log.dst_ip}</div>

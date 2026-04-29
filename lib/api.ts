@@ -158,9 +158,11 @@ export function getAttackDistribution(params?: DashboardRangeParams) {
   return apiGet<AttackTypeRow[]>(`/stats/attacks${buildRangeQuery(params)}`)
 }
 
-export function getAlertTrend(hours?: number) {
-  const suffix = typeof hours === "number" ? `?hours=${hours}` : ""
-  return apiGet<AlertTrendBucket[]>(`/stats/alerts-trend${suffix}`)
+export function getAlertTrend(hoursOrParams?: number | DashboardRangeParams) {
+  if (typeof hoursOrParams === "number") {
+    return apiGet<AlertTrendBucket[]>(`/stats/alerts-trend?hours=${hoursOrParams}`)
+  }
+  return apiGet<AlertTrendBucket[]>(`/stats/alerts-trend${buildRangeQuery(hoursOrParams)}`)
 }
 
 export function getTopSources(limit = 8, params?: DashboardRangeParams) {
@@ -175,6 +177,46 @@ export function getProtocolStats(params?: DashboardRangeParams) {
   return apiGet<ProtocolStatRow[]>(`/stats/protocols${buildRangeQuery(params)}`)
 }
 
-export function getAlerts(limit = 100) {
-  return apiGet<BackendAlert[]>(`/alerts?limit=${limit}`)
+export function getAlerts(limit = 100, params?: DashboardRangeParams) {
+  const q = new URLSearchParams()
+  q.set("limit", String(limit))
+  if (params?.from) q.set("from", params.from)
+  if (params?.to) q.set("to", params.to)
+  return apiGet<BackendAlert[]>(`/alerts?${q}`)
+}
+
+export function acknowledgeAlert(id: string) {
+  return fetch(`/api/alerts/${encodeURIComponent(id)}/acknowledge`, {
+    method: "PUT",
+  }).then(async (res) => {
+    if (!res.ok) {
+      let detail = `${res.status} ${res.statusText}`
+      try {
+        const payload = (await res.json()) as { error?: string }
+        if (payload?.error) detail = payload.error
+      } catch {}
+      throw new Error(detail)
+    }
+    return res.json() as Promise<{ success: boolean }>
+  })
+}
+
+export function unacknowledgeAlert(id: string) {
+  return fetch(`/api/alerts/${encodeURIComponent(id)}/acknowledge`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ acknowledged: false }),
+  }).then(async (res) => {
+    if (!res.ok) {
+      let detail = `${res.status} ${res.statusText}`
+      try {
+        const payload = (await res.json()) as { error?: string }
+        if (payload?.error) detail = payload.error
+      } catch {}
+      throw new Error(detail)
+    }
+    return res.json() as Promise<{ success: boolean }>
+  })
 }

@@ -1,12 +1,14 @@
 "use client"
 
-import { Fragment, useState, useEffect, useCallback } from "react"
+import { memo, useState, useEffect, useCallback } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Header } from "@/components/layout/header"
+import { TrafficChart, type TrafficChartPoint } from "@/components/dashboard/traffic-chart"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { ChevronDown, ChevronUp, Pause, Play, Monitor, RefreshCw } from "lucide-react"
-import { getLogs, type BackendLog } from "@/lib/api"
+import { List, type RowComponentProps } from "react-window"
+import { Monitor, Pause, Play } from "lucide-react"
+import { getDashboardStats, getFilteredTimeline, getLogs, type BackendLog, type DashboardStats, type FilteredTimelineBucket } from "@/lib/api"
 import { labelBadgeClass } from "@/lib/label-styles"
 
 const protocolColors: Record<string, string> = {
@@ -20,9 +22,73 @@ function protoClass(p: string) {
   return protocolColors[p] ?? "border-border/40 bg-muted/30 text-foreground"
 }
 
+function timelineToChartData(rows: FilteredTimelineBucket[]): TrafficChartPoint[] {
+  return rows.map((row) => ({
+    ...row,
+    time: row.timestamp.slice(11, 16),
+  }))
+}
+
+const LIVE_LOG_ROW_HEIGHT = 56
+const LIVE_LOG_TABLE_HEIGHT = 520
+const LIVE_LOG_GRID_COLUMNS =
+  "minmax(150px,1fr) minmax(180px,1fr) minmax(180px,1fr) minmax(110px,0.8fr) minmax(120px,0.9fr) minmax(140px,0.9fr)"
+
+type LiveLogRowProps = {
+  logs: BackendLog[]
+  selectedLogId: string | null
+  onSelect: (logId: string) => void
+  formatTime: (timestamp: string) => string
+}
+
+const LiveLogVirtualRow = memo(function LiveLogVirtualRow({
+  index,
+  style,
+  logs,
+  selectedLogId,
+  onSelect,
+  formatTime,
+}: RowComponentProps<LiveLogRowProps>) {
+  const log = logs[index]
+
+  if (!log) return null
+
+  const isSelected = selectedLogId === log.id
+
+  return (
+    <div
+      style={style}
+      className={cn(
+        "cursor-pointer border-b border-border/30 transition-colors hover:bg-background/30",
+        isSelected && "bg-slate-200/80 dark:bg-white/10",
+      )}
+      onClick={() => onSelect(log.id)}
+    >
+      <div className="grid h-full items-center px-5" style={{ gridTemplateColumns: LIVE_LOG_GRID_COLUMNS }}>
+        <div className="pr-4 font-mono text-sm text-muted-foreground">{formatTime(log.timestamp)}</div>
+        <div className="pr-4 font-mono text-sm font-medium text-foreground">{log.src_ip}</div>
+        <div className="pr-4 font-mono text-sm text-foreground">{log.dst_ip}</div>
+        <div className="pr-4">
+          <span className={cn("rounded border px-2.5 py-1 text-xs font-medium", protoClass(log.protocol))}>
+            {log.protocol}
+          </span>
+        </div>
+        <div className="pr-4 text-sm text-muted-foreground">{log.duration?.toFixed(3) ?? "—"}</div>
+        <div>
+          <span className={cn("rounded px-2.5 py-1 text-xs font-medium", labelBadgeClass(log.label))}>
+            {log.label === "Benign" ? "Normal" : log.label}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+})
+
 export default function LiveLogsPage() {
   const [logs, setLogs] = useState<BackendLog[]>([])
-  const [expandedLog, setExpandedLog] = useState<string | null>(null)
+  const [timeline, setTimeline] = useState<FilteredTimelineBucket[]>([])
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [selectedLogId, setSelectedLogId] = useState<string | null>(null)
   const [isLive, setIsLive] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -30,8 +96,15 @@ export default function LiveLogsPage() {
   const load = useCallback(async () => {
     try {
       setError(null)
-      const res = await getLogs({ limit: 50, page: 1 })
-      setLogs(res.logs)
+      const [logsResponse, timelineResponse, statsResponse] = await Promise.all([
+        getLogs({ limit: 50, page: 1 }),
+        getFilteredTimeline(),
+        getDashboardStats(),
+      ])
+      setLogs(logsResponse.logs)
+      setTimeline(timelineResponse)
+      setStats(statsResponse)
+      setSelectedLogId((current) => current ?? logsResponse.logs[0]?.id ?? null)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al cargar logs")
     } finally {
@@ -65,8 +138,10 @@ export default function LiveLogsPage() {
 
   const normalCount = logs.filter((l) => l.label === "Benign").length
   const threatCount = logs.length - normalCount
+  const highRiskCount = (stats?.bySeverity?.high ?? 0) + (stats?.bySeverity?.critical ?? 0)
   const normalPercent = logs.length ? ((normalCount / logs.length) * 100).toFixed(1) : "0"
   const threatPercent = logs.length ? ((threatCount / logs.length) * 100).toFixed(1) : "0"
+  const selectedLog = logs.find((log) => log.id === selectedLogId) ?? logs[0] ?? null
 
   return (
     <DashboardLayout>
@@ -88,32 +163,17 @@ export default function LiveLogsPage() {
           <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end lg:w-auto">
             <Button
               variant="outline"
-              size="sm"
-              className="border-border/40"
-              onClick={() => void load()}
+              className={cn(
+                "h-10 min-w-28 justify-center border-border/40",
+                isLive
+                  ? "border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/15 hover:text-red-300"
+                  : "border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/15 hover:text-emerald-300",
+              )}
+              onClick={() => setIsLive((current) => !current)}
             >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Actualizar
+              {isLive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              {isLive ? "Pausar" : "Reanudar"}
             </Button>
-            <div className="flex justify-end gap-2 sm:justify-start">
-              <Button
-                variant="outline"
-                className={cn("h-10 w-10 p-0", !isLive ? "border-primary/30 bg-primary/10" : "border-border/40 bg-card")}
-                onClick={() => setIsLive(false)}
-              >
-                <Pause className="h-4 w-4 text-muted-foreground" />
-              </Button>
-              <Button
-                variant="outline"
-                className={cn(
-                  "h-10 w-10 p-0",
-                  isLive ? "border-emerald-500/30 bg-emerald-500/10" : "border-border/40 bg-card",
-                )}
-                onClick={() => setIsLive(true)}
-              >
-                <Play className="h-4 w-4 text-muted-foreground" />
-              </Button>
-            </div>
           </div>
         </div>
 
@@ -124,118 +184,101 @@ export default function LiveLogsPage() {
           </div>
         )}
 
-        <div className="overflow-hidden rounded-xl border border-border/40 bg-card">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-background/30">
-                  <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Timestamp
-                  </th>
-                  <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    SRC IP
-                  </th>
-                  <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    DST IP
-                  </th>
-                  <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Proto
-                  </th>
-                  <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Duración (s)
-                  </th>
-                  <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Label
-                  </th>
-                  <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Detalles
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={7} className="px-5 py-8 text-center text-muted-foreground">
-                      Cargando…
-                    </td>
-                  </tr>
-                ) : (
-                  logs.map((log, index) => {
-                    const rowKey = `${log.id}-${index}`
-                    return (
-                    <Fragment key={rowKey}>
-                      <tr
-                        className={cn(
-                          "cursor-pointer transition-colors hover:bg-background/30",
-                          index === 0 && isLive && "animate-in fade-in duration-500",
-                          expandedLog === rowKey && "bg-background/30",
-                        )}
-                        onClick={() => setExpandedLog(expandedLog === rowKey ? null : rowKey)}
-                      >
-                        <td className="px-5 py-4 font-mono text-sm text-muted-foreground">{formatTime(log.timestamp)}</td>
-                        <td
-                          className={cn(
-                            "px-5 py-4 font-mono text-sm font-medium",
-                            log.label !== "Benign" ? "text-[#ef4444]" : "text-[#00b4ff]",
-                          )}
-                        >
-                          {log.src_ip}
-                        </td>
-                        <td className="px-5 py-4 font-mono text-sm text-foreground">{log.dst_ip}</td>
-                        <td className="px-5 py-4">
-                          <span className={cn("rounded border px-2.5 py-1 text-xs font-medium", protoClass(log.protocol))}>
-                            {log.protocol}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4 text-sm text-muted-foreground">{log.duration?.toFixed(3) ?? "—"}</td>
-                        <td className="px-5 py-4">
-                          <span className={cn("rounded px-2.5 py-1 text-xs font-medium", labelBadgeClass(log.label))}>
-                            {log.label === "Benign" ? "Normal" : log.label}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4">
-                          {expandedLog === rowKey ? (
-                            <ChevronUp className="h-5 w-5 text-muted-foreground" />
-                          ) : (
-                            <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                          )}
-                        </td>
-                      </tr>
-                      {expandedLog === rowKey && (
-                        <tr>
-                          <td colSpan={7} className="bg-background/40 px-5 py-4">
-                            <div className="mb-3 flex items-center gap-2">
-                              <Monitor className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                                Documento (API)
-                              </span>
-                            </div>
-                            <pre className="overflow-x-auto rounded-lg border border-border/40 bg-card p-4 font-mono text-xs text-muted-foreground">
-                              {JSON.stringify(log, null, 2)}
-                            </pre>
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                    )
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+        <div className="mb-6">
+          <TrafficChart
+            data={timelineToChartData(timeline)}
+            totalFlows={stats?.totalLogs ?? 0}
+            totalAttacks={stats?.totalAttacks ?? 0}
+            totalHighRisk={highRiskCount}
+          />
         </div>
 
-        <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
-          <span>{logs.length ? `Mostrando ${logs.length} eventos (API)` : "Sin datos"}</span>
-          <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-[#14b8a6]" />
-              {normalPercent}% Normal
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-[#ef4444]" />
-              {threatPercent}% Amenaza
-            </span>
+        <div className="overflow-hidden rounded-xl border border-border/40 bg-card">
+          <div
+            className="grid border-b border-border/40 bg-background/30 px-5 py-4"
+            style={{ gridTemplateColumns: LIVE_LOG_GRID_COLUMNS }}
+          >
+            <div className="pr-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Timestamp
+            </div>
+            <div className="pr-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              SRC IP
+            </div>
+            <div className="pr-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              DST IP
+            </div>
+            <div className="pr-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Proto
+            </div>
+            <div className="pr-4 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Duración (s)
+            </div>
+            <div className="text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Label
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="flex h-[220px] items-center justify-center text-sm text-muted-foreground">Cargando…</div>
+          ) : (
+            <List
+              rowComponent={LiveLogVirtualRow}
+              rowCount={logs.length}
+              rowHeight={LIVE_LOG_ROW_HEIGHT}
+              rowProps={{
+                logs,
+                selectedLogId,
+                onSelect: setSelectedLogId,
+                formatTime,
+              }}
+              style={{ height: LIVE_LOG_TABLE_HEIGHT, width: "100%" }}
+            />
+          )}
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+          <div className="rounded-xl border border-border/40 bg-card p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <Monitor className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Documento seleccionado
+              </span>
+            </div>
+            {selectedLog ? (
+              <pre className="overflow-x-auto rounded-lg border border-border/40 bg-background/40 p-4 font-mono text-xs text-muted-foreground">
+                {JSON.stringify(selectedLog, null, 2)}
+              </pre>
+            ) : (
+              <p className="text-sm text-muted-foreground">Selecciona un registro para ver su detalle.</p>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-border/40 bg-card p-5">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">Muestra en pantalla</h3>
+            <p className="mt-2 text-xs text-muted-foreground">
+              La tabla muestra una ventana reciente de {logs.length.toLocaleString()} eventos y usa virtualización para mantener el
+              rendimiento estable.
+            </p>
+            <div className="mt-4 space-y-3 text-sm text-muted-foreground">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-[#14b8a6]" />
+                  Normal
+                </span>
+                <span>{normalPercent}%</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-[#ef4444]" />
+                  Amenaza
+                </span>
+                <span>{threatPercent}%</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Estado de actualización</span>
+                <span>{isLive ? "Automático" : "Manual"}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
