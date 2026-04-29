@@ -37,12 +37,24 @@ async function proxy(request: NextRequest, path: string[]) {
   headers.delete("connection")
 
   const methodAllowsBody = request.method !== "GET" && request.method !== "HEAD"
-  const upstreamResponse = await fetch(upstreamUrl, {
-    method: request.method,
-    headers,
-    body: methodAllowsBody ? await request.text() : undefined,
-    cache: "no-store",
-  })
+  let upstreamResponse: Response
+
+  try {
+    upstreamResponse = await fetch(upstreamUrl, {
+      method: request.method,
+      headers,
+      body: methodAllowsBody ? await request.text() : undefined,
+      cache: "no-store",
+    })
+  } catch {
+    return Response.json(
+      {
+        error:
+          "No fue posible conectar con api-log-guard. Verifica que el backend esté ejecutándose en el puerto configurado y reinicia `npm run dev` si acabas de cambiar server.js.",
+      },
+      { status: 503 },
+    )
+  }
 
   const responseHeaders = new Headers(upstreamResponse.headers)
   responseHeaders.delete("content-encoding")

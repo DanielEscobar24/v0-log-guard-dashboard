@@ -1,51 +1,140 @@
-# v0-log-guard-dashboard
+# LogGuard Dashboard
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [v0](https://v0.app).
+LogGuard es una aplicación para explorar flujos de red clasificados a partir de CICIDS-2017. El proyecto combina un dashboard en Next.js con un backend que consulta MongoDB y expone métricas listas para visualización.
 
-## LogGuard — backend en la nube
+En la iteración actual el panel principal está pensado para analizar un lote cargado en Mongo, no para monitoreo en tiempo real. La referencia operativa más clara es trabajar con un subconjunto del dataset, por ejemplo `friday.csv`, y transformar cada flujo a un documento como:
 
-El pipeline (ingestión → RabbitMQ → analytics → MongoDB → **api-log-guard**) se documenta para **despliegue en la nube** (Atlas, Rabbit administrado, tres servicios). No usamos `docker-compose` en este repo: cada microservicio tiene su `Dockerfile` bajo `services/` para quien despliegue con contenedores en un PaaS o en AWS.
+```json
+{
+  "timestamp": "2026-04-20T23:29:20.339894Z",
+  "src_ip": "192.168.10.3",
+  "dst_ip": "192.168.10.1",
+  "src_port": 62547,
+  "dst_port": 53,
+  "protocol": "UDP",
+  "bytes_sent": 94,
+  "bytes_received": 250,
+  "packets": 4,
+  "duration": 115.895,
+  "label": "Benign",
+  "severity": "low",
+  "confidence": 0.95
+}
+```
 
-- **Guía**: [docs/CLOUD.md](docs/CLOUD.md)
-- **Variables**: crea un **`.env`** en la raíz (no se sube a Git) con `MONGODB_URL`, `RABBITMQ_URL`, Kaggle y `CORS_ORIGIN`; detalle en la guía.
-- **Workers locales**: con los `venv` de cada servicio listos, `python3 scripts/run_logguard_workers.py` arranca analytics + ingestion (ver [docs/CLOUD.md](docs/CLOUD.md)).
+## Qué muestra la aplicación
 
-## Frontend en Vercel
+- Panel principal con volumen total, proporción de ataques, tráfico benigno y eventos de mayor riesgo.
+- Distribución por clasificación, severidad y protocolos observados.
+- Ranking de tipos de ataque y orígenes sospechosos.
+- Tabla de registros con filtro por rango de fechas y exportación a CSV.
 
-El frontend ya no necesita exponer `NEXT_PUBLIC_API_URL` para hablar con el gateway. Ahora usa un proxy interno de Next:
+## Arquitectura resumida
 
-- En local, si no defines nada, el proxy apunta a `http://localhost:4000`.
-- En Vercel, define `API_GATEWAY_URL=https://tu-api-log-guard...` en las variables del proyecto.
-- El navegador solo consume `/api/...` del mismo dominio del frontend.
+- `app/` y `components/`: frontend en Next.js 16.
+- `app/api/[...path]/route.ts`: proxy interno de Next hacia el gateway real.
+- `services/api-log-guard/`: API REST que consulta MongoDB y expone estadísticas para el dashboard.
+- `services/analytics-engine/`: transforma flujos, asigna severidad y genera alertas.
+- `services/ingestion-service/`: descarga o lee el dataset y publica eventos para procesamiento.
 
-## Built with v0
+La guía de despliegue cloud del backend está en [docs/CLOUD.md](docs/CLOUD.md).
 
-This repository is linked to a [v0](https://v0.app) project. You can continue developing by visiting the link below -- start new chats to make changes, and v0 will push commits directly to this repo. Every merge to `main` will automatically deploy.
+## Requisitos
 
-[Continue working on v0 →](https://v0.app/chat/projects/prj_LlrgUqtG5NbfmIVlWhhim5AU0pBB)
+- Node.js 20 o superior
+- npm
+- MongoDB accesible desde `api-log-guard`
+- Python 3 para los workers si quieres poblar datos desde el pipeline
 
-## Getting Started
+## Variables de entorno
 
-First, run the development server:
+Crea un archivo `.env` en la raíz del proyecto. Estas son las más importantes para el dashboard:
+
+```bash
+API_GATEWAY_URL=http://localhost:4000
+MONGODB_URL=mongodb://...
+MONGODB_DB_NAME=logguard
+RABBITMQ_URL=amqp://...
+CORS_ORIGIN=http://localhost:3000
+```
+
+Notas:
+
+- En local, si `API_GATEWAY_URL` no existe, el proxy de Next usa `http://localhost:4000`.
+- En Vercel conviene definir `API_GATEWAY_URL` con la URL pública HTTPS del backend.
+
+## Ejecución local
+
+Instala dependencias del frontend:
+
+```bash
+npm install
+```
+
+Inicia la aplicación:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Esto levanta Next.js y el gateway local mediante `scripts/dev-with-gateway.sh`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Abre `http://localhost:3000`.
 
-## Learn More
+## Poblar datos
 
-To learn more, take a look at the following resources:
+Si ya tienes Mongo con la colección `logs`, el dashboard debería responder de inmediato.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [v0 Documentation](https://v0.app/docs) - learn about v0 and how to use it.
+Si quieres poblarla desde el pipeline:
 
-<a href="https://v0.app/chat/api/kiro/clone/DanielEscobar24/v0-log-guard-dashboard" alt="Open in Kiro"><img src="https://pdgvvgmkdvyeydso.public.blob.vercel-storage.com/open%20in%20kiro.svg?sanitize=true" /></a>
+```bash
+python3 scripts/run_logguard_workers.py
+```
+
+Ese script arranca `analytics-engine` e `ingestion-service` usando el `.env` de la raíz. Para esta iteración, una estrategia práctica es trabajar con un único día del dataset, como `friday.csv`, y cargar sus flujos en Mongo para mantener el análisis enfocado y liviano.
+
+## Endpoints que usa el panel
+
+El frontend consume rutas relativas `/api/...` y Next las reenvía al gateway. Las vistas principales dependen de:
+
+- `/api/stats/dashboard`
+- `/api/stats/attacks`
+- `/api/stats/protocols`
+- `/api/stats/top-sources`
+- `/api/logs`
+
+## Cómo leer el panel principal
+
+- `Total_Flows`: tamaño del lote analizado.
+- `Attacks`: flujos con `label` distinto de `Benign`.
+- `Normal`: tráfico clasificado como benigno.
+- `High Risk`: eventos en severidad `high` o `critical`.
+- `Clasificación del tráfico`: composición general del lote.
+- `Severidad observada`: prioridad operativa del conjunto cargado.
+- `Protocolos con actividad sospechosa`: qué protocolos concentran más ataques relativos.
+- `Riesgo por tipo de ataque`: distribución del subconjunto malicioso.
+- `Orígenes sospechosos`: IP origen con mayor volumen de eventos marcados como ataque.
+
+## Desarrollo
+
+Scripts disponibles:
+
+```bash
+npm run dev
+npm run dev:next
+npm run dev:workers
+npm run build
+npm run lint
+```
+
+## Despliegue
+
+Frontend:
+
+- Despliega Next.js en Vercel.
+- Configura `API_GATEWAY_URL` en el proyecto.
+
+Backend y pipeline:
+
+- Despliega `api-log-guard`, `analytics-engine` e `ingestion-service` en el proveedor que prefieras.
+- Usa la guía de [docs/CLOUD.md](docs/CLOUD.md) para MongoDB Atlas, RabbitMQ y variables necesarias.

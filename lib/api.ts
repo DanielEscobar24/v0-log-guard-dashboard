@@ -49,9 +49,32 @@ export interface TrafficBucket {
   total: number
 }
 
+export interface TimelinePreviewLog {
+  id: string
+  timestamp: string
+  src_ip: string
+  dst_ip: string
+  protocol: string
+  label: string
+  severity: string
+}
+
+export interface FilteredTimelineBucket {
+  timestamp: string
+  total: number
+  attacks: number
+  highRisk: number
+  preview: TimelinePreviewLog[]
+}
+
 export interface AttackTypeRow {
   type: string
   count: number
+}
+
+export interface DashboardRangeParams {
+  from?: string
+  to?: string
 }
 
 export interface AlertTrendBucket {
@@ -63,6 +86,12 @@ export interface TopSourceRow {
   ip: string
   attacks: number
   types: string[]
+}
+
+export interface ProtocolStatRow {
+  protocol: string
+  total: number
+  attacks: number
 }
 
 export interface BackendAlert {
@@ -94,8 +123,16 @@ async function apiGet<T>(path: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
-export function getDashboardStats() {
-  return apiGet<DashboardStats>("/stats/dashboard")
+function buildRangeQuery(params?: DashboardRangeParams) {
+  const q = new URLSearchParams()
+  if (params?.from) q.set("from", params.from)
+  if (params?.to) q.set("to", params.to)
+  const suffix = q.toString() ? `?${q}` : ""
+  return suffix
+}
+
+export function getDashboardStats(params?: DashboardRangeParams) {
+  return apiGet<DashboardStats>(`/stats/dashboard${buildRangeQuery(params)}`)
 }
 
 export function getLogs(params?: { limit?: number; page?: number; from?: string; to?: string }) {
@@ -113,8 +150,12 @@ export function getTrafficStats(hours?: number) {
   return apiGet<TrafficBucket[]>(`/stats/traffic${suffix}`)
 }
 
-export function getAttackDistribution() {
-  return apiGet<AttackTypeRow[]>("/stats/attacks")
+export function getFilteredTimeline(params?: DashboardRangeParams) {
+  return apiGet<FilteredTimelineBucket[]>(`/stats/timeline${buildRangeQuery(params)}`)
+}
+
+export function getAttackDistribution(params?: DashboardRangeParams) {
+  return apiGet<AttackTypeRow[]>(`/stats/attacks${buildRangeQuery(params)}`)
 }
 
 export function getAlertTrend(hours?: number) {
@@ -122,8 +163,16 @@ export function getAlertTrend(hours?: number) {
   return apiGet<AlertTrendBucket[]>(`/stats/alerts-trend${suffix}`)
 }
 
-export function getTopSources(limit = 8) {
-  return apiGet<TopSourceRow[]>(`/stats/top-sources?limit=${limit}`)
+export function getTopSources(limit = 8, params?: DashboardRangeParams) {
+  const q = new URLSearchParams()
+  q.set("limit", String(limit))
+  if (params?.from) q.set("from", params.from)
+  if (params?.to) q.set("to", params.to)
+  return apiGet<TopSourceRow[]>(`/stats/top-sources?${q}`)
+}
+
+export function getProtocolStats(params?: DashboardRangeParams) {
+  return apiGet<ProtocolStatRow[]>(`/stats/protocols${buildRangeQuery(params)}`)
 }
 
 export function getAlerts(limit = 100) {

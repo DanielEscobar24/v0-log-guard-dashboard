@@ -10,12 +10,10 @@ import {
   AlertTriangle, 
   TrendingUp, 
   Shield,
-  Zap,
   CheckCircle,
   Loader2
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { microservices } from "@/lib/mock-data"
 
 const navItems = [
@@ -57,7 +55,6 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           </div>
           <div>
             <h1 className="text-lg font-bold text-sidebar-foreground">LogGuard</h1>
-            <p className="text-xs text-muted-foreground tracking-wider">OBSERVABILIDAD DE RED</p>
           </div>
         </div>
 
@@ -113,20 +110,6 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             </div>
           </div>
         )}
-
-        {/* User Profile */}
-        <div className="px-4 py-4">
-          <div className="flex items-center gap-3">
-            <Avatar className="w-9 h-9">
-              <AvatarImage src="/placeholder-user.jpg" alt="Admin" />
-              <AvatarFallback className="bg-sidebar-accent text-sidebar-primary text-sm">AR</AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-sidebar-foreground truncate">Admin_Root</p>
-              <p className="text-xs text-muted-foreground truncate">Administrador del sistema</p>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Toast Notification */}

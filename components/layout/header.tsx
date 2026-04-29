@@ -1,71 +1,27 @@
 "use client"
 
-import { SidebarContent } from "@/components/layout/sidebar"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { Button } from "@/components/ui/button"
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import { Menu } from "lucide-react"
-import { useEffect, useState } from "react"
+import { Shield } from "lucide-react"
 
 export function Header() {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-
-  useEffect(() => {
-    const mql = window.matchMedia("(min-width: 1024px)")
-    const onChange = () => {
-      if (mql.matches) setSidebarOpen(false)
-    }
-    onChange()
-    mql.addEventListener("change", onChange)
-    return () => mql.removeEventListener("change", onChange)
-  }, [])
-
   return (
-    <header className="h-16 bg-card text-card-foreground flex items-center justify-between px-6">
-      <div className="flex items-center gap-2">
-        <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-          <SheetTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="lg:hidden text-muted-foreground hover:text-foreground hover:bg-accent"
-              aria-label="Abrir navegación"
-            >
-              <Menu className="size-5" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="lg:hidden p-0 w-[260px] bg-sidebar border-border/40">
-            <SheetHeader className="sr-only">
-              <SheetTitle>Navegación</SheetTitle>
-              <SheetDescription>Muestra el menú de navegación móvil.</SheetDescription>
-            </SheetHeader>
-            <div className="h-full">
-              <SidebarContent onNavigate={() => setSidebarOpen(false)} />
-            </div>
-          </SheetContent>
-        </Sheet>
-
-        {/* Mobile: keep theme toggle accessible */}
-        <div className="md:hidden">
-          <ThemeToggle />
+    <header className="flex h-16 items-center justify-between bg-card px-6 text-card-foreground lg:justify-end">
+      <div className="flex items-center gap-3 lg:hidden">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar-accent">
+          <Shield className="h-5 w-5 text-sidebar-primary" />
+        </div>
+        <div>
+          <h1 className="text-base font-bold text-foreground">LogGuard</h1>
+          <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Observabilidad de red</p>
         </div>
       </div>
 
-      {/* Right Actions */}
-      <div className="hidden md:flex items-center gap-3">
+      <div className="lg:hidden">
         <ThemeToggle />
+      </div>
 
-        {/* <div className="flex items-center gap-2 pl-3">
-          <div className="text-right">
-            <p className="text-sm font-medium text-foreground">Admin</p>
-            <p className="text-xs text-muted-foreground">Administrador raíz</p>
-          </div>
-          <Avatar className="w-9 h-9">
-            <AvatarImage src="/placeholder-user.jpg" alt="Admin" />
-            <AvatarFallback className="bg-primary/15 text-primary text-sm">A</AvatarFallback>
-          </Avatar>
-        </div> */}
+      <div className="hidden items-center gap-3 lg:flex">
+        <ThemeToggle />
       </div>
     </header>
   )

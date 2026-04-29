@@ -1,24 +1,33 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import type { DateRange } from "react-day-picker"
 import { Header } from "@/components/layout/header"
 import { KPICard } from "@/components/dashboard/kpi-card"
 import { LiveStreamTable } from "@/components/dashboard/live-stream-table"
+import { TrafficChart, type TrafficChartPoint } from "@/components/dashboard/traffic-chart"
 import {
-  LabelDistributionPanel,
+  ProtocolDistributionPanel,
+  SeverityBreakdownPanel,
   TopAttackTypesPanel,
-  // TopSourceIPsPanel,
+  TopSourceIPsPanel,
 } from "@/components/dashboard/sidebar-panels"
 import {
   getAttackDistribution,
   getDashboardStats,
+  getFilteredTimeline,
   getLogs,
+  getProtocolStats,
   getTopSources,
   type AttackTypeRow,
   type BackendLog,
+  type DashboardRangeParams,
   type DashboardStats,
+  type FilteredTimelineBucket,
+  type ProtocolStatRow,
   type TopSourceRow,
 } from "@/lib/api"
+import { getDefaultDashboardRange, loadDashboardRange, saveDashboardRange } from "@/lib/dashboard-range"
 
 const ATTACK_TYPE_COLORS: Record<string, string> = {
   ddos: "#ff7a1a",
@@ -31,18 +40,6 @@ const ATTACK_TYPE_COLORS: Record<string, string> = {
   suspicious: "#7df9ff",
 }
 
-const LABEL_COLORS: Record<string, string> = {
-  benign: "#19e6cf",
-  normal: "#19e6cf",
-  ddos: "#ff7a1a",
-  "port scan": "#00c2ff",
-  portscan: "#00c2ff",
-  "brute force": "#a855f7",
-  bruteforce: "#a855f7",
-  bot: "#ff4d8d",
-  infiltration: "#ffe066",
-}
-
 const SEVERITY_COLORS: Record<string, string> = {
   critical: "#ff4d6d",
   high: "#ff9f1c",
@@ -52,10 +49,26 @@ const SEVERITY_COLORS: Record<string, string> = {
 
 const FALLBACK_COLORS = ["#19e6cf", "#ff7a1a", "#00c2ff", "#a855f7", "#ff4d6d", "#ffe066"]
 
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+function formatDateInput(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function formatDateTimeRange(dateValue: string, endOfDay = false) {
+  return `${dateValue}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z`
+}
+
 function attacksToPanelData(rows: AttackTypeRow[], total: number) {
   const t = total > 0 ? total : rows.reduce((a, b) => a + b.count, 0) || 1
   return rows.slice(0, 6).map((row, i) => ({
     name: row.type,
+    value: row.count,
     percentage: Math.round((row.count / t) * 1000) / 10,
     color: ATTACK_TYPE_COLORS[row.type.toLowerCase()] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length],
   }))
@@ -79,21 +92,61 @@ function distributionToPanelData(
   }))
 }
 
+function protocolsToPanelData(rows: ProtocolStatRow[]) {
+  return rows.slice(0, 5).map((row, index) => ({
+    name: row.protocol || "Unknown",
+    total: row.total,
+    attacks: row.attacks,
+    attackShare: row.total > 0 ? (row.attacks / row.total) * 100 : 0,
+    color: FALLBACK_COLORS[index % FALLBACK_COLORS.length],
+  }))
+}
+
+function timelineToChartData(rows: FilteredTimelineBucket[]): TrafficChartPoint[] {
+  return rows.map((row) => ({
+    ...row,
+    time: row.timestamp.slice(11, 16),
+  }))
+}
+
 export function DashboardHome() {
+  const [selectedRange, setSelectedRange] = useState<DateRange>(getDefaultDashboardRange)
+  const [hasHydratedRange, setHasHydratedRange] = useState(false)
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [logs, setLogs] = useState<BackendLog[]>([])
   const [attacks, setAttacks] = useState<AttackTypeRow[]>([])
   const [sources, setSources] = useState<TopSourceRow[]>([])
+  const [protocols, setProtocols] = useState<ProtocolStatRow[]>([])
+  const [timeline, setTimeline] = useState<FilteredTimelineBucket[]>([])
   const [error, setError] = useState<string | null>(null)
+  const requestSequence = useRef(0)
+
+  const rangeParams: DashboardRangeParams | undefined =
+    selectedRange.from && selectedRange.to
+      ? {
+          from: formatDateTimeRange(formatDateInput(selectedRange.from)),
+          to: formatDateTimeRange(formatDateInput(selectedRange.to), true),
+        }
+      : undefined
 
   const load = useCallback(async () => {
+    const requestId = requestSequence.current + 1
+    requestSequence.current = requestId
+
     setError(null)
     const results = await Promise.allSettled([
-      getDashboardStats(),
-      getLogs({ limit: 8, page: 1 }),
-      getAttackDistribution(),
-      getTopSources(8),
+      getDashboardStats(rangeParams),
+      getLogs({ limit: 8, page: 1, ...rangeParams }),
+      getAttackDistribution(rangeParams),
+      getTopSources(8, rangeParams),
+      getProtocolStats(rangeParams),
+      getFilteredTimeline(rangeParams),
     ])
+
+    if (requestSequence.current !== requestId) {
+      return
+    }
+
     const err = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined
     if (err) {
       setError(err.reason instanceof Error ? err.reason.message : String(err.reason))
@@ -102,16 +155,34 @@ export function DashboardHome() {
     if (results[1].status === "fulfilled") setLogs(results[1].value.logs)
     if (results[2].status === "fulfilled") setAttacks(results[2].value)
     if (results[3].status === "fulfilled") setSources(results[3].value)
+    if (results[4].status === "fulfilled") setProtocols(results[4].value)
+    if (results[5].status === "fulfilled") setTimeline(results[5].value)
+  }, [rangeParams?.from, rangeParams?.to])
+
+  useEffect(() => {
+    setSelectedRange(loadDashboardRange())
+    setHasHydratedRange(true)
   }, [])
+
+  useEffect(() => {
+    if (!hasHydratedRange) return
+    saveDashboardRange(selectedRange)
+  }, [hasHydratedRange, selectedRange])
 
   useEffect(() => {
     void load()
   }, [load])
 
   const attackTotal = stats ? stats.totalAttacks : 0
-  const attackRate = stats ? Number(stats.attackRate) : 0
-  const benignRate = stats && stats.totalLogs > 0 ? ((stats.totalBenign / stats.totalLogs) * 100).toFixed(2) : "0.00"
-  const labelDistribution = distributionToPanelData(stats?.byLabel, LABEL_COLORS)
+  const severityDistribution = distributionToPanelData(stats?.bySeverity, SEVERITY_COLORS)
+  const criticalCount =
+    (stats?.bySeverity?.critical ?? 0) + (stats?.bySeverity?.high ?? 0)
+  const dominantProtocol = protocols[0]
+  const dominantProtocolShare = dominantProtocol?.total && stats?.totalLogs
+    ? ((dominantProtocol.total / stats.totalLogs) * 100).toFixed(2)
+    : "0.00"
+  const leadingSource = sources[0]
+
   return (
     <>
       <Header />
@@ -125,44 +196,61 @@ export function DashboardHome() {
           </div>
         )}
 
-        <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <KPICard
-            title="Total_Flows"
-            value={stats?.totalLogs?.toLocaleString() ?? "—"}
-            titleClassName="kpi-neon-white"
-            valueClassName="kpi-neon-white"
-            subtitle="Registros acumulados en la colección `logs`."
-            detail="Representa el volumen total cargado en la base de datos."
+        <div className="mb-6">
+          <LiveStreamTable
+            initialLogs={logs}
+            initialRange={selectedRange}
+            onRangeApply={(range) => setSelectedRange(range)}
           />
-          <KPICard
-            title="Attacks"
-            value={stats?.totalAttacks?.toLocaleString() ?? "—"}
-            titleClassName="kpi-neon-red"
-            valueClassName="kpi-neon-red"
-            subtitle={`${attackRate.toFixed(2)}% del total de flujos fueron clasificados como ataque.`}
-            detail="Incluye todos los labels distintos de `Normal`."
-          />
-          <KPICard
-            title="Normal"
-            value={stats?.totalBenign?.toLocaleString() ?? "—"}
-            titleClassName="kpi-neon-green"
-            valueClassName="kpi-neon-green"
-            subtitle={`${benignRate}% del total de flujos fueron clasificados como normales.`}
-            detail="Corresponde al tráfico normal acumulado en Mongo."
-          />
-          <LabelDistributionPanel items={labelDistribution} />
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
-          <div className="space-y-6 lg:col-span-3">
-            <LiveStreamTable initialLogs={logs} />
+        <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-4">
+          <div className="xl:col-span-3">
+            <TrafficChart
+              data={timelineToChartData(timeline)}
+              totalFlows={stats?.totalLogs ?? 0}
+              totalAttacks={stats?.totalAttacks ?? 0}
+              totalHighRisk={criticalCount}
+            />
           </div>
-          <div className="space-y-6">
-            <TopAttackTypesPanel items={attacksToPanelData(attacks, attackTotal)} />
-            {/* <TopSourceIPsPanel
-              items={sources.map((s) => ({ ip: s.ip, flows: s.attacks }))}
-            /> */}
-          </div>
+          <KPICard
+            title="Dominant Protocol"
+            value={dominantProtocol?.protocol ?? "—"}
+            titleClassName="text-[#7dd3fc]"
+            valueClassName="text-[#7dd3fc]"
+            subtitle={`${dominantProtocolShare}% del total viaja por este protocolo.`}
+            detail={
+              dominantProtocol
+                ? `${dominantProtocol.total.toLocaleString()} flujos observados, ${dominantProtocol.attacks.toLocaleString()} marcados como ataque.`
+                : "Sin suficientes datos agregados por protocolo."
+            }
+          />
+        </div>
+
+        <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
+          <SeverityBreakdownPanel items={severityDistribution} />
+          <ProtocolDistributionPanel items={protocolsToPanelData(protocols)} />
+          <TopAttackTypesPanel items={attacksToPanelData(attacks, attackTotal)} />
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <TopSourceIPsPanel items={sources.map((s) => ({ ip: s.ip, flows: s.attacks, labels: s.types }))} />
+          <KPICard
+            title="Lead Source"
+            value={leadingSource?.ip ?? "—"}
+            titleClassName="text-[#c4b5fd]"
+            valueClassName="text-lg text-[#c4b5fd]"
+            subtitle={
+              leadingSource
+                ? `${leadingSource.attacks.toLocaleString()} eventos maliciosos asociados a este origen.`
+                : "Sin IP de origen sospechosa para resumir."
+            }
+            detail={
+              leadingSource
+                ? `Tipos asociados: ${leadingSource.types.slice(0, 3).join(", ")}.`
+                : "Aparecerá cuando existan registros clasificados como ataque."
+            }
+          />
         </div>
       </div>
     </>

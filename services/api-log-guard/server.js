@@ -73,6 +73,16 @@ function toTimestampDateExpression(fieldName) {
   }
 }
 
+function buildTimestampRangeQuery(params = {}) {
+  const query = {}
+  if (params.from || params.to) {
+    query.timestamp = {}
+    if (params.from) query.timestamp.$gte = params.from
+    if (params.to) query.timestamp.$lte = params.to
+  }
+  return query
+}
+
 async function connectMongoDB() {
   const maxRetries = 10
   const retryDelayMs = 5000
@@ -106,11 +116,7 @@ async function getLogs(params = {}) {
   if (params.dst_ip) query.dst_ip = safeRegex(params.dst_ip)
   if (params.protocol) query.protocol = params.protocol
 
-  if (params.from || params.to) {
-    query.timestamp = {}
-    if (params.from) query.timestamp.$gte = params.from
-    if (params.to) query.timestamp.$lte = params.to
-  }
+  Object.assign(query, buildTimestampRangeQuery(params))
 
   const skip = (page - 1) * limit
 
@@ -136,16 +142,18 @@ async function getLogs(params = {}) {
   }
 }
 
-async function getDashboardStats() {
+async function getDashboardStats(params = {}) {
+  const query = buildTimestampRangeQuery(params)
+
   const [totalLogs, totalAttacks, activeAlerts, labelCounts, severityCounts] = await Promise.all([
-    logsCollection().countDocuments(),
-    logsCollection().countDocuments({ label: { $ne: "Benign" } }),
+    logsCollection().countDocuments(query),
+    logsCollection().countDocuments({ ...query, label: { $ne: "Benign" } }),
     alertsCollection().countDocuments({ acknowledged: false }),
     logsCollection()
-      .aggregate([{ $group: { _id: "$label", count: { $sum: 1 } } }])
+      .aggregate([{ $match: query }, { $group: { _id: "$label", count: { $sum: 1 } } }])
       .toArray(),
     logsCollection()
-      .aggregate([{ $group: { _id: "$severity", count: { $sum: 1 } } }])
+      .aggregate([{ $match: query }, { $group: { _id: "$severity", count: { $sum: 1 } } }])
       .toArray(),
   ])
 
@@ -158,6 +166,71 @@ async function getDashboardStats() {
     byLabel: labelCounts.reduce((acc, row) => ({ ...acc, [row._id]: row.count }), {}),
     bySeverity: severityCounts.reduce((acc, row) => ({ ...acc, [row._id]: row.count }), {}),
   }
+}
+
+async function getFilteredTrafficTimeline(params = {}) {
+  const baseQuery = buildTimestampRangeQuery(params)
+
+  const pipeline = [
+    ...(Object.keys(baseQuery).length > 0 ? [{ $match: baseQuery }] : []),
+    {
+      $addFields: {
+        timestampDate: toTimestampDateExpression("$timestamp"),
+      },
+    },
+    {
+      $match: {
+        timestampDate: { $ne: null },
+      },
+    },
+    {
+      $sort: {
+        timestampDate: -1,
+      },
+    },
+    {
+      $group: {
+        _id: {
+          $dateToString: {
+            format: "%Y-%m-%d %H:00",
+            date: "$timestampDate",
+            timezone: "UTC",
+          },
+        },
+        total: { $sum: 1 },
+        attacks: {
+          $sum: { $cond: [{ $ne: ["$label", "Benign"] }, 1, 0] },
+        },
+        highRisk: {
+          $sum: {
+            $cond: [{ $in: ["$severity", ["high", "critical"]] }, 1, 0],
+          },
+        },
+        preview: {
+          $push: {
+            id: "$id",
+            timestamp: "$timestamp",
+            src_ip: "$src_ip",
+            dst_ip: "$dst_ip",
+            protocol: "$protocol",
+            label: "$label",
+            severity: "$severity",
+          },
+        },
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]
+
+  const rows = await logsCollection().aggregate(pipeline).toArray()
+
+  return rows.map((row) => ({
+    timestamp: row._id,
+    total: row.total,
+    attacks: row.attacks,
+    highRisk: row.highRisk,
+    preview: Array.isArray(row.preview) ? row.preview.slice(0, 3) : [],
+  }))
 }
 
 async function getAlertTrend(hours) {
@@ -263,10 +336,19 @@ app.put("/api/alerts/:id/acknowledge", async (req, res) => {
 
 app.get("/api/stats/dashboard", async (req, res) => {
   try {
-    res.json(await getDashboardStats())
+    res.json(await getDashboardStats(req.query))
   } catch (error) {
     console.error("Error fetching dashboard stats:", error)
     res.status(500).json({ error: "Failed to fetch dashboard stats" })
+  }
+})
+
+app.get("/api/stats/timeline", async (req, res) => {
+  try {
+    res.json(await getFilteredTrafficTimeline(req.query))
+  } catch (error) {
+    console.error("Error fetching filtered traffic timeline:", error)
+    res.status(500).json({ error: "Failed to fetch filtered traffic timeline" })
   }
 })
 
@@ -323,9 +405,11 @@ app.get("/api/stats/traffic", async (req, res) => {
 
 app.get("/api/stats/attacks", async (req, res) => {
   try {
+    const query = { ...buildTimestampRangeQuery(req.query), label: { $ne: "Benign" } }
+
     const attacks = await logsCollection()
       .aggregate([
-        { $match: { label: { $ne: "Benign" } } },
+        { $match: query },
         { $group: { _id: "$label", count: { $sum: 1 } } },
         { $sort: { count: -1 } },
       ])
@@ -350,9 +434,11 @@ app.get("/api/stats/alerts-trend", async (req, res) => {
 app.get("/api/stats/top-sources", async (req, res) => {
   try {
     const limit = parsePositiveInt(req.query.limit, 10)
+    const query = { ...buildTimestampRangeQuery(req.query), label: { $ne: "Benign" } }
+
     const sources = await logsCollection()
       .aggregate([
-        { $match: { label: { $ne: "Benign" } } },
+        { $match: query },
         {
           $group: {
             _id: "$src_ip",
@@ -374,8 +460,11 @@ app.get("/api/stats/top-sources", async (req, res) => {
 
 app.get("/api/stats/protocols", async (req, res) => {
   try {
+    const query = buildTimestampRangeQuery(req.query)
+
     const protocols = await logsCollection()
       .aggregate([
+        { $match: query },
         {
           $group: {
             _id: "$protocol",

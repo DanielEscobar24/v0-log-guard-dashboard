@@ -15,6 +15,8 @@ import { cn } from "@/lib/utils"
 
 interface LiveStreamTableProps {
   initialLogs?: BackendLog[]
+  initialRange?: DateRange
+  onRangeApply?: (range: DateRange) => void
 }
 
 type SeveritySummaryItem = {
@@ -201,18 +203,31 @@ const LogVirtualRow = memo(function LogVirtualRow({
   )
 })
 
-export function LiveStreamTable({ initialLogs = [] }: LiveStreamTableProps) {
+export function LiveStreamTable({ initialLogs = [], initialRange, onRangeApply }: LiveStreamTableProps) {
   const today = useMemo(() => startOfDay(new Date()), [])
+  const normalizedInitialRange = useMemo(
+    () => ({
+      from: initialRange?.from ? startOfDay(initialRange.from) : today,
+      to: initialRange?.to ? startOfDay(initialRange.to) : initialRange?.from ? startOfDay(initialRange.from) : today,
+    }),
+    [initialRange?.from, initialRange?.to, today],
+  )
   const [logs, setLogs] = useState<BackendLog[]>(initialLogs)
   const [totalMatchingLogs, setTotalMatchingLogs] = useState(initialLogs.length)
   const [isLoading, setIsLoading] = useState(false)
   const [isRunningDiagnosis, setIsRunningDiagnosis] = useState(false)
   const [isRangePickerOpen, setIsRangePickerOpen] = useState(false)
   const [rangeTouched, setRangeTouched] = useState(false)
-  const [appliedRange, setAppliedRange] = useState<DateRange>({ from: today, to: today })
-  const [draftRange, setDraftRange] = useState<DateRange>({ from: today, to: today })
-  const [visibleMonth, setVisibleMonth] = useState<Date>(() => getCalendarAnchorMonth({ from: today, to: today }, today))
+  const [appliedRange, setAppliedRange] = useState<DateRange>(normalizedInitialRange)
+  const [draftRange, setDraftRange] = useState<DateRange>(normalizedInitialRange)
+  const [visibleMonth, setVisibleMonth] = useState<Date>(() => getCalendarAnchorMonth(normalizedInitialRange, today))
   const [severitySummary, setSeveritySummary] = useState<SeveritySummaryItem[]>([])
+
+  useEffect(() => {
+    setAppliedRange(normalizedInitialRange)
+    setDraftRange(normalizedInitialRange)
+    setVisibleMonth(getCalendarAnchorMonth(normalizedInitialRange, today))
+  }, [normalizedInitialRange, today])
 
   const formattedAppliedRange = useMemo(
     () => ({
@@ -397,10 +412,12 @@ export function LiveStreamTable({ initialLogs = [] }: LiveStreamTableProps) {
   const applyDraftRange = () => {
     setRangeTouched(true)
     if (!isDraftRangeValid || !draftRange.from) return
-    setAppliedRange({
+    const nextRange = {
       from: draftRange.from,
       to: draftRange.to ?? draftRange.from,
-    })
+    }
+    setAppliedRange(nextRange)
+    onRangeApply?.(nextRange)
     setIsRangePickerOpen(false)
   }
 
@@ -429,8 +446,8 @@ export function LiveStreamTable({ initialLogs = [] }: LiveStreamTableProps) {
     await new Promise((resolve) => setTimeout(resolve, 1600))
     setIsRunningDiagnosis(false)
     toast({
-      title: "Diagnóstico en ejecución",
-      description: `Se inició un análisis simulado del ${formattedAppliedRange.from} al ${formattedAppliedRange.to}. Este flujo se conectará con Analítica.`,
+      title: "Análisis iniciado",
+      description: `Se preparó un análisis simulado del ${formattedAppliedRange.from} al ${formattedAppliedRange.to}. Este flujo podrá conectarse después con el modelo de ML.`,
     })
   }
 
@@ -440,14 +457,15 @@ export function LiveStreamTable({ initialLogs = [] }: LiveStreamTableProps) {
         <div className="min-w-0 space-y-3">
           <div>
             <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">
-              CICIDS-2017 — últimos registros (Mongo)
+              CICIDS-2017 — filtro y análisis de registros
             </h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              Combina el detalle reciente con un resumen rápido de severidad sobre la colección{" "}
-              <code className="rounded bg-background/60 px-1 py-0.5">logs</code>.
+              Selecciona un rango sobre la colección{" "}
+              <code className="rounded bg-background/60 px-1 py-0.5">logs</code> para revisar,
+              descargar o enviar el subconjunto a un análisis posterior.
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Mostrando {logs.length.toLocaleString()} de {totalMatchingLogs.toLocaleString()} registros del rango aplicado.
+              Mostrando {logs.length.toLocaleString()} de {totalMatchingLogs.toLocaleString()} registros del rango seleccionado.
             </p>
           </div>
 
@@ -532,9 +550,8 @@ export function LiveStreamTable({ initialLogs = [] }: LiveStreamTableProps) {
               </PopoverContent>
             </Popover>
           </div>
-
           {orderedSeveritySummary.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2" style={{ width: 'fit-content'}}>
               {orderedSeveritySummary.map((item) => (
                 <div key={item.name} className="rounded-lg border border-border/50 bg-background/40 px-3 py-2">
                   <div className="flex items-center gap-2">
@@ -542,10 +559,6 @@ export function LiveStreamTable({ initialLogs = [] }: LiveStreamTableProps) {
                     <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       {SEVERITY_LABELS[item.name.toLowerCase()] ?? item.name}
                     </span>
-                  </div>
-                  <div className="mt-1 flex items-end gap-2">
-                    <span className="text-sm font-semibold text-foreground">{item.value.toLocaleString()}</span>
-                    <span className="text-xs text-muted-foreground">{item.percentage.toFixed(1)}%</span>
                   </div>
                 </div>
               ))}

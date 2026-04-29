@@ -9,7 +9,7 @@ const geist = Geist({ subsets: ['latin'], variable: '--font-sans' })
 const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-mono' })
 
 export const metadata: Metadata = {
-  title: 'LogGuard - Observabilidad de Red',
+  title: 'LogGuard',
   description: 'Sistema centralizado de monitoreo de logs de red con detección de amenazas y analítica en tiempo real',
   generator: 'v0.app',
   icons: {
