@@ -21,4 +21,18 @@ PIDS+=("$!")
 npm run dev --prefix "$ROOT/services/api-log-guard" &
 PIDS+=("$!")
 
+ML_DIR="$ROOT/services/guard-logs-ml"
+ML_PY="$ML_DIR/.venv/bin/python"
+
+if [[ -x "$ML_PY" ]]; then
+  (
+    cd "$ML_DIR"
+    "$ML_PY" -u main.py
+  ) &
+  PIDS+=("$!")
+else
+  echo "Aviso: Guard-logs-ML no se inició porque falta $ML_PY" >&2
+  echo "Crea su venv con: cd services/guard-logs-ml && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt" >&2
+fi
+
 wait

@@ -15,3 +15,5 @@ next.user-config.*
 node_modules
 .next/
 .DS_Store
+services/*/.venv/
+services/guard-logs-ml/model/*.joblib

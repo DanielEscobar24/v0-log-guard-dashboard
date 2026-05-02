@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Header } from "@/components/layout/header"
 import { TrafficChart, type TrafficChartPoint } from "@/components/dashboard/traffic-chart"
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 import { List, type RowComponentProps } from "react-window"
 import { Monitor, Pause, Play } from "lucide-react"
 import {
+  getActiveMlModel,
   getAlerts,
   getDashboardStats,
   getFilteredTimeline,
@@ -18,8 +19,11 @@ import {
   type BackendLog,
   type DashboardStats,
   type FilteredTimelineBucket,
+  type MlActiveModel,
 } from "@/lib/api"
 import { labelBadgeClass } from "@/lib/label-styles"
+import { ACTIVE_ML_MODEL, deriveLogMlSignals, deriveMlRangeRun } from "@/lib/ml-insights"
+import { subscribeMlRunEvents } from "@/lib/ml-run-events"
 
 const protocolColors: Record<string, string> = {
   TCP: "border-[#00b4ff]/30 bg-[#00b4ff]/20 text-[#00b4ff]",
@@ -42,7 +46,7 @@ function timelineToChartData(rows: FilteredTimelineBucket[]): TrafficChartPoint[
 const LIVE_LOG_ROW_HEIGHT = 56
 const LIVE_LOG_TABLE_HEIGHT = 520
 const LIVE_LOG_GRID_COLUMNS =
-  "minmax(150px,1fr) minmax(180px,1fr) minmax(180px,1fr) minmax(110px,0.8fr) minmax(120px,0.9fr) minmax(140px,0.9fr)"
+  "minmax(130px,0.95fr) minmax(170px,1fr) minmax(170px,1fr) minmax(100px,0.7fr) minmax(110px,0.75fr) minmax(145px,0.95fr) minmax(100px,0.7fr)"
 
 type LiveLogRowProps = {
   logs: EnrichedLog[]
@@ -54,6 +58,10 @@ type LiveLogRowProps = {
 type EnrichedLog = BackendLog & {
   alertStatus?: AlertStatus
   alertCount?: number
+  mlConfidence: number
+  mlDetectionSource: string
+  mlModelVersion: string
+  mlReason: string
 }
 
 function LiveLogVirtualRow({
@@ -69,6 +77,7 @@ function LiveLogVirtualRow({
   if (!log) return null
 
   const isSelected = selectedLogId === log.id
+  const displayedPrediction = log.ml_prediction ?? log.label
 
   return (
     <div
@@ -90,8 +99,8 @@ function LiveLogVirtualRow({
         </div>
         <div className="pr-4 text-sm text-muted-foreground">{log.duration?.toFixed(3) ?? "—"}</div>
         <div>
-          <span className={cn("rounded px-2.5 py-1 text-xs font-medium", labelBadgeClass(log.label))}>
-            {log.label === "Benign" ? "Normal" : log.label}
+          <span className={cn("rounded px-2.5 py-1 text-xs font-medium", labelBadgeClass(displayedPrediction))}>
+            {displayedPrediction === "Benign" ? "Normal" : displayedPrediction}
           </span>
           {log.alertStatus && (
             <span
@@ -106,6 +115,20 @@ function LiveLogVirtualRow({
             </span>
           )}
         </div>
+        <div className="pr-1">
+          <span
+            className={cn(
+              "rounded border px-2.5 py-1 text-xs font-medium",
+              log.mlConfidence >= 0.92
+                ? "border-[#14b8a6]/30 bg-[#14b8a6]/12 text-[#14b8a6]"
+                : log.mlConfidence >= 0.82
+                  ? "border-[#f59e0b]/30 bg-[#f59e0b]/12 text-[#f59e0b]"
+                  : "border-border/40 bg-background/50 text-muted-foreground",
+            )}
+          >
+            {(log.mlConfidence * 100).toFixed(0)}%
+          </span>
+        </div>
       </div>
     </div>
   )
@@ -119,6 +142,7 @@ export default function LiveLogsPage() {
   const [isLive, setIsLive] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [activeMlModel, setActiveMlModel] = useState<MlActiveModel | null>(null)
   const isRequestInFlight = useRef(false)
 
   const enrichLogsWithAlerts = useCallback((inputLogs: BackendLog[], relatedAlerts: BackendAlert[]) => {
@@ -136,11 +160,16 @@ export default function LiveLogsPage() {
       const hasOpen = logAlerts.some((alert) => !alert.acknowledged)
       const hasAcknowledged = logAlerts.some((alert) => alert.acknowledged)
       const alertStatus: AlertStatus | undefined = hasOpen ? "open" : hasAcknowledged ? "acknowledged" : undefined
+      const mlSignals = deriveLogMlSignals(log, alertStatus, logAlerts.length)
 
       return {
         ...log,
         alertStatus,
         alertCount: logAlerts.length,
+        mlConfidence: mlSignals.confidence,
+        mlDetectionSource: mlSignals.source,
+        mlModelVersion: mlSignals.modelVersion,
+        mlReason: mlSignals.reason,
       }
     })
   }, [])
@@ -177,15 +206,31 @@ export default function LiveLogsPage() {
     }
   }, [enrichLogsWithAlerts])
 
+  const loadActiveModel = useCallback(async () => {
+    try {
+      setActiveMlModel(await getActiveMlModel())
+    } catch {
+      setActiveMlModel(null)
+    }
+  }, [])
+
   useEffect(() => {
     void load()
-  }, [load])
+    void loadActiveModel()
+  }, [load, loadActiveModel])
 
   useEffect(() => {
     if (!isLive) return
     const id = setInterval(() => void load(), 8000)
     return () => clearInterval(id)
   }, [isLive, load])
+
+  useEffect(() => {
+    return subscribeMlRunEvents(() => {
+      void load()
+      void loadActiveModel()
+    })
+  }, [load, loadActiveModel])
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp)
@@ -201,7 +246,7 @@ export default function LiveLogsPage() {
       .replace(",", ".")
   }
 
-  const normalCount = logs.filter((l) => l.label === "Benign").length
+  const normalCount = logs.filter((l) => (l.ml_prediction ?? l.label) === "Benign").length
   const threatCount = logs.length - normalCount
   const highRiskCount = (stats?.bySeverity?.high ?? 0) + (stats?.bySeverity?.critical ?? 0)
   const normalPercent = logs.length ? ((normalCount / logs.length) * 100).toFixed(1) : "0"
@@ -209,6 +254,7 @@ export default function LiveLogsPage() {
   const selectedLog = logs.find((log) => log.id === selectedLogId) ?? logs[0] ?? null
   const logsWithOpenAlerts = logs.filter((log) => log.alertStatus === "open").length
   const logsWithAcknowledgedAlerts = logs.filter((log) => log.alertStatus === "acknowledged").length
+  const liveMlSummary = useMemo(() => deriveMlRangeRun(logs), [logs])
 
   return (
     <DashboardLayout>
@@ -246,6 +292,39 @@ export default function LiveLogsPage() {
               {isLive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               {isLive ? "Pausar" : "Reanudar"}
             </Button>
+          </div>
+        </div>
+
+        <div className="mb-4 rounded-xl border border-sky-500/20 bg-sky-500/5 px-5 py-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-sky-300">
+              {ACTIVE_ML_MODEL.serviceName}
+            </span>
+            <span className="rounded-full border border-border/50 bg-background/50 px-2.5 py-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+              {activeMlModel?.modelVersion ?? ACTIVE_ML_MODEL.modelVersion}
+            </span>
+            <span className="rounded-full border border-border/50 bg-background/50 px-2.5 py-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+              scoring continuo + correlación
+            </span>
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-4 xl:grid-cols-4">
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Logs puntuados</p>
+              <p className="mt-1 text-sm font-medium text-foreground">{liveMlSummary.totalScored.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Priorizados</p>
+              <p className="mt-1 text-sm font-medium text-foreground">{liveMlSummary.suspiciousCount.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Confianza media</p>
+              <p className="mt-1 text-sm font-medium text-foreground">{liveMlSummary.averageConfidencePct.toFixed(1)}%</p>
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Salida</p>
+              <p className="mt-1 text-sm font-medium text-foreground">{liveMlSummary.collectionsWritten}</p>
+            </div>
           </div>
         </div>
 
@@ -288,6 +367,9 @@ export default function LiveLogsPage() {
             <div className="text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Label
             </div>
+            <div className="text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Conf. ML
+            </div>
           </div>
 
           {loading ? (
@@ -317,19 +399,37 @@ export default function LiveLogsPage() {
               </span>
             </div>
             {selectedLog ? (
-              <pre className="overflow-x-auto rounded-lg border border-border/40 bg-background/40 p-4 font-mono text-xs text-muted-foreground">
-                {JSON.stringify(selectedLog, null, 2)}
-              </pre>
+              <>
+                <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-lg border border-border/40 bg-background/40 px-3 py-2">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Predicción</p>
+                    <p className="mt-2 text-sm font-medium text-foreground">
+                      {(selectedLog.ml_prediction ?? selectedLog.label) === "Benign" ? "Normal" : (selectedLog.ml_prediction ?? selectedLog.label)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/40 bg-background/40 px-3 py-2">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Confianza ML</p>
+                    <p className="mt-2 text-sm font-medium text-foreground">{(selectedLog.mlConfidence * 100).toFixed(1)}%</p>
+                  </div>
+                  <div className="rounded-lg border border-border/40 bg-background/40 px-3 py-2">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Fuente</p>
+                    <p className="mt-2 text-sm font-medium text-foreground">{selectedLog.mlDetectionSource}</p>
+                  </div>
+                </div>
+                <pre className="overflow-x-auto rounded-lg border border-border/40 bg-background/40 p-4 font-mono text-xs text-muted-foreground">
+                  {JSON.stringify(selectedLog, null, 2)}
+                </pre>
+              </>
             ) : (
               <p className="text-sm text-muted-foreground">Selecciona un registro para ver su detalle.</p>
             )}
           </div>
 
           <div className="rounded-xl border border-border/40 bg-card p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">Muestra en pantalla</h3>
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">Diagnóstico ML en pantalla</h3>
             <p className="mt-2 text-xs text-muted-foreground">
-              La tabla muestra una ventana reciente de {logs.length.toLocaleString()} eventos y usa virtualización para mantener el
-              rendimiento estable.
+              La tabla sigue mostrando la ventana reciente, pero aquí visualiza cómo quedaría la inferencia continua una vez
+              exista el microservicio de ML dedicado.
             </p>
             <div className="mt-4 space-y-3 text-sm text-muted-foreground">
               <div className="flex items-center justify-between">
@@ -357,6 +457,18 @@ export default function LiveLogsPage() {
               <div className="flex items-center justify-between">
                 <span>Logs con alerta reconocida</span>
                 <span>{logsWithAcknowledgedAlerts}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Modelo activo</span>
+                <span>{activeMlModel?.modelVersion ?? ACTIVE_ML_MODEL.modelVersion}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Confianza media ML</span>
+                <span>{liveMlSummary.averageConfidencePct.toFixed(1)}%</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Persistencia propuesta</span>
+                <span>{liveMlSummary.collectionsWritten}</span>
               </div>
             </div>
           </div>

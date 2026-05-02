@@ -33,6 +33,15 @@ export interface BackendLog {
   label: string
   severity: string
   confidence: number
+  ml_prediction?: string
+  ml_severity?: string
+  ml_confidence?: number
+  ml_model_version?: string
+  ml_model_type?: string
+  ml_detection_source?: string
+  ml_last_run_id?: string
+  ml_last_scored_at?: string
+  ml_reason?: string
 }
 
 export interface LogsResponse {
@@ -106,6 +115,57 @@ export interface BackendAlert {
   message: string
   log_id: string
   acknowledged: boolean
+  detection_source?: string
+  ml_confidence?: number
+  ml_model_version?: string
+  inference_run_id?: string
+}
+
+export interface MlActiveModel {
+  serviceName: string
+  modelVersion: string
+  modelType: string
+  trainingDataset: string
+  referenceF1: number
+  inferenceMode: string
+  trainedAt: string
+  featureNames: string[]
+  totalTrainingRows: number
+  testRows: number
+  isActive: boolean
+  thresholdF1: number
+}
+
+export interface MlRiskySource {
+  ip: string
+  count: number
+}
+
+export interface MlRunSummary {
+  runId: string
+  status: string
+  triggerSource: string
+  startedAt: string
+  finishedAt: string
+  range: {
+    from?: string
+    to?: string
+  }
+  modelVersion: string
+  modelType: string
+  totalScored: number
+  suspiciousCount: number
+  benignCount: number
+  averageConfidencePct: number
+  suspiciousConfidencePct: number
+  coveragePct: number
+  collectionsWritten: string
+  logsUpdated: number
+  alertsCreated: number
+  alertsEnriched: number
+  trainedModel: boolean
+  labelDistribution: Record<string, number>
+  topRiskySources: MlRiskySource[]
 }
 
 export type AlertStatus = "open" | "acknowledged"
@@ -121,6 +181,22 @@ export interface AlertGroupPayload {
 async function apiGet<T>(path: string): Promise<T> {
   const normalizedPath = path.startsWith("/api/") ? path : `/api${path.startsWith("/") ? path : `/${path}`}`
   const res = await fetch(normalizedPath, { cache: "no-store" })
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`
+    try {
+      const payload = (await res.json()) as { error?: string }
+      if (payload?.error) {
+        detail = payload.error
+      }
+    } catch {}
+    throw new Error(detail)
+  }
+  return res.json() as Promise<T>
+}
+
+async function apiSend<T>(path: string, init?: RequestInit): Promise<T> {
+  const normalizedPath = path.startsWith("/api/") ? path : `/api${path.startsWith("/") ? path : `/${path}`}`
+  const res = await fetch(normalizedPath, init)
   if (!res.ok) {
     let detail = `${res.status} ${res.statusText}`
     try {
@@ -249,5 +325,39 @@ export function updateAlertGroupAcknowledgement(payload: AlertGroupPayload) {
       throw new Error(detail)
     }
     return res.json() as Promise<{ success: boolean; matchedCount: number; modifiedCount: number; acknowledged: boolean }>
+  })
+}
+
+export function getActiveMlModel() {
+  return apiGet<MlActiveModel>("/ml/models/active")
+}
+
+export function getLatestMlRun() {
+  return apiGet<MlRunSummary>("/ml/runs/latest")
+}
+
+export function trainMlModel(payload?: { triggerSource?: string }) {
+  return apiSend<MlActiveModel>("/ml/train", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload ?? {}),
+  })
+}
+
+export function runMlRange(payload: {
+  from: string
+  to: string
+  triggerSource?: string
+  autoTrain?: boolean
+  forceRetrain?: boolean
+}) {
+  return apiSend<MlRunSummary>("/ml/run", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
   })
 }

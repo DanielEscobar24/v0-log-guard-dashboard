@@ -5,8 +5,8 @@ LogGuard es un dashboard de observabilidad de red construido con **Next.js 16** 
 ## Estado actual del proyecto
 
 - Las pantallas `/`, `/live-logs` y `/alerts` consumen datos reales desde la API.
-- La pantalla `/analytics` sigue usando `lib/mock-data.ts`; hoy es una vista demostrativa.
-- El botón **"Ejecutar diagnóstico"** del panel principal es simulado y no dispara un modelo real.
+- La antigua pantalla `/analytics` fue removida del dashboard.
+- El botón **"Ejecutar corrida ML"** del panel principal dispara una corrida real contra `Guard-logs-ML`, reentrena el modelo, crea una nueva versión `model_vN`, persiste el resumen en MongoDB y enriquece `logs`/`alerts`.
 - El diagnóstico visual del sidebar también es simulado.
 - La vista **"Logs en vivo"** no usa websockets: hace polling manual o automático cada **8 segundos** contra MongoDB vía API.
 - Si ya tienes datos en MongoDB, puedes usar el dashboard sin desplegar RabbitMQ ni los workers de Python.
@@ -18,6 +18,7 @@ Navegador
   -> Next.js 16 (App Router)
       -> /api/[...path] (proxy server-side)
           -> api-log-guard (Express)
+              -> Guard-logs-ML (Flask)
               -> MongoDB (colecciones logs, alerts)
 
 Pipeline opcional de carga:
@@ -34,6 +35,42 @@ Notas importantes:
 - El frontend nunca llama al gateway directamente desde el navegador; siempre usa rutas relativas `/api/...`.
 - `api-log-guard` hoy **no consume RabbitMQ** y **no expone Socket.IO**. Solo consulta MongoDB.
 - `analytics-engine` sí publica en `processed_logs` y `alerts`, pero el dashboard actual no consume esas colas.
+- `Guard-logs-ML` entrena, versiona y ejecuta inferencia por rango usando la colección `logs`, y persiste corridas en `logguard_ml.ml_runs`.
+- Cada corrida manual desde el panel principal fuerza reentrenamiento y, por diseño, incrementa la versión activa del modelo.
+
+## Capa ML actual
+
+`Guard-logs-ML` trabaja hoy sobre datos tabulares de red ya normalizados en MongoDB. La colección `logs` aporta variables como:
+
+- `src_port`
+- `dst_port`
+- `bytes_sent`
+- `bytes_received`
+- `packets`
+- `duration`
+- `protocol`
+
+Con esas variables el servicio construye features adicionales como `total_bytes`, `byte_balance`, `packets_per_second`, `dst_port_bucket`, `src_scope` y `dst_scope`, y luego compara **tres modelos supervisados** por `weighted_f1`.
+
+### Modelos usados actualmente
+
+1. `RandomForest`
+   Se usa porque este problema es de clasificación multiclase sobre datos tabulares de red. Captura relaciones no lineales, tolera ruido y suele rendir mejor que un árbol solo, por lo que es el candidato principal para quedar como modelo activo.
+
+2. `LogisticRegression`
+   Se conserva como baseline serio porque es rápida, estable y fácil de interpretar. Sirve para justificar académicamente si un modelo más complejo realmente aporta mejora, y además entrega probabilidades útiles para confianza de alerta.
+
+3. `DecisionTree`
+   Se usa por explicabilidad. Permite sustentar reglas del tipo “si pasa esto y esto, entonces probable ataque”, lo cual es valioso para defensa del proyecto, aunque normalmente generaliza peor que `RandomForest`.
+
+### Por qué solo estos 3 modelos
+
+- Porque son los modelos vistos en clase que mejor se adaptan a clasificación supervisada sobre logs tabulares.
+- Porque mantienen el servicio entendible y justificable académicamente.
+- Porque cubren tres necesidades distintas del proyecto:
+  - rendimiento práctico (`RandomForest`)
+  - baseline interpretable (`LogisticRegression`)
+  - explicabilidad de reglas (`DecisionTree`)
 
 ## Pantallas y comportamiento real
 
@@ -81,11 +118,6 @@ Endpoints usados:
 - `/api/stats/attacks`
 - `/api/alerts/:id/acknowledge`
 
-### `/analytics`
-
-- Hoy usa datos simulados definidos en `lib/mock-data.ts`.
-- No consume el backend actual.
-
 ## Contrato de datos esperado
 
 ### Colección `logs`
@@ -107,7 +139,16 @@ El gateway y el frontend esperan documentos con esta forma:
   "duration": 0.116,
   "label": "Benign",
   "severity": "low",
-  "confidence": 0.95
+  "confidence": 0.95,
+  "ml_prediction": "Benign",
+  "ml_severity": "low",
+  "ml_confidence": 0.98,
+  "ml_model_version": "model_v3",
+  "ml_model_type": "RandomForest",
+  "ml_detection_source": "Guard-logs-ML",
+  "ml_last_run_id": "run-d62084ad8be5e610",
+  "ml_last_scored_at": "2026-05-02T03:19:09.131858Z",
+  "ml_reason": "flujo UDP sin indicios de ataque, 4 paquetes observados"
 }
 ```
 
@@ -123,7 +164,11 @@ El gateway y el frontend esperan documentos con esta forma:
   "target_ip": "192.168.10.1",
   "message": "DDoS attack detected from 192.168.10.3",
   "log_id": "4a2f9d7f2b1c8e10",
-  "acknowledged": false
+  "acknowledged": false,
+  "detection_source": "Guard-logs-ML",
+  "ml_confidence": 0.94,
+  "ml_model_version": "model_v3",
+  "inference_run_id": "run-d62084ad8be5e610"
 }
 ```
 
@@ -205,6 +250,13 @@ npm install --prefix services/api-log-guard
 Si también vas a usar el pipeline de Python, crea los `venv`:
 
 ```bash
+cd services/guard-logs-ml
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
+```
+
+```bash
 cd services/analytics-engine
 python3 -m venv .venv
 source .venv/bin/activate
@@ -230,6 +282,7 @@ Ese script arranca:
 
 - `next dev --webpack`
 - `services/api-log-guard/server.js`
+- `services/guard-logs-ml/main.py` si su `.venv` ya existe
 
 Abre `http://localhost:3000`.
 
@@ -275,6 +328,10 @@ Para una carga de prueba controlada, normalmente conviene:
 - `GET /api/stats/alerts-trend`
 - `GET /api/stats/top-sources`
 - `GET /api/stats/protocols`
+- `GET /api/ml/models/active`
+- `GET /api/ml/runs/latest`
+- `POST /api/ml/train`
+- `POST /api/ml/run`
 
 ### Filtros soportados hoy
 
@@ -297,7 +354,7 @@ npm run lint
 
 Puedes separar el despliegue en dos niveles:
 
-- **Visualización solamente**: Next.js + `api-log-guard` + MongoDB
+- **Visualización solamente**: Next.js + `api-log-guard` + `Guard-logs-ML` + MongoDB
 - **Pipeline completo**: lo anterior + RabbitMQ + `analytics-engine` + `ingestion-service`
 
 La guía actualizada está en [docs/CLOUD.md](docs/CLOUD.md).

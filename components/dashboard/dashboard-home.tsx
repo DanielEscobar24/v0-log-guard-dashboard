@@ -14,6 +14,7 @@ import {
 } from "@/components/dashboard/sidebar-panels"
 import {
   getAttackDistribution,
+  getActiveMlModel,
   getDashboardStats,
   getFilteredTimeline,
   getProtocolStats,
@@ -22,10 +23,13 @@ import {
   type DashboardRangeParams,
   type DashboardStats,
   type FilteredTimelineBucket,
+  type MlActiveModel,
   type ProtocolStatRow,
   type TopSourceRow,
 } from "@/lib/api"
 import { getDefaultDashboardRange, loadDashboardRange, saveDashboardRange } from "@/lib/dashboard-range"
+import { ACTIVE_ML_MODEL, deriveMlOverview } from "@/lib/ml-insights"
+import { subscribeMlRunEvents } from "@/lib/ml-run-events"
 
 const ATTACK_TYPE_COLORS: Record<string, string> = {
   ddos: "#ff7a1a",
@@ -119,6 +123,7 @@ export function DashboardHome() {
   const [sources, setSources] = useState<TopSourceRow[]>([])
   const [protocols, setProtocols] = useState<ProtocolStatRow[]>([])
   const [timeline, setTimeline] = useState<FilteredTimelineBucket[]>([])
+  const [activeMlModel, setActiveMlModel] = useState<MlActiveModel | null>(null)
   const [error, setError] = useState<string | null>(null)
   const requestSequence = useRef(0)
 
@@ -159,6 +164,14 @@ export function DashboardHome() {
     if (results[4].status === "fulfilled") setTimeline(results[4].value)
   }, [rangeParams])
 
+  const loadActiveModel = useCallback(async () => {
+    try {
+      setActiveMlModel(await getActiveMlModel())
+    } catch {
+      setActiveMlModel(null)
+    }
+  }, [])
+
   useEffect(() => {
     setSelectedRange(loadDashboardRange())
     setHasHydratedRange(true)
@@ -172,7 +185,15 @@ export function DashboardHome() {
   useEffect(() => {
     if (!hasHydratedRange) return
     void load()
-  }, [hasHydratedRange, load])
+    void loadActiveModel()
+  }, [hasHydratedRange, load, loadActiveModel])
+
+  useEffect(() => {
+    return subscribeMlRunEvents(() => {
+      void load()
+      void loadActiveModel()
+    })
+  }, [load, loadActiveModel])
 
   const attackTotal = stats ? stats.totalAttacks : 0
   const severityDistribution = distributionToPanelData(stats?.bySeverity, SEVERITY_COLORS)
@@ -183,6 +204,10 @@ export function DashboardHome() {
     ? ((dominantProtocol.total / stats.totalLogs) * 100).toFixed(2)
     : "0.00"
   const leadingSource = sources[0]
+  const mlOverview = useMemo(
+    () => deriveMlOverview({ stats, attacks, sources, protocols }),
+    [attacks, protocols, sources, stats],
+  )
 
   return (
     <>
@@ -201,6 +226,73 @@ export function DashboardHome() {
           <LiveStreamTable
             initialRange={selectedRange}
             onRangeApply={(range) => setSelectedRange(range)}
+            onMlRunComplete={() => {
+              void load()
+              void loadActiveModel()
+            }}
+          />
+        </div>
+
+        <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr_0.8fr]">
+          <div className="overflow-hidden rounded-xl border border-sky-500/20 bg-[linear-gradient(180deg,rgba(14,165,233,0.10),rgba(15,23,42,0.02))] p-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-sky-300">
+                {ACTIVE_ML_MODEL.serviceName}
+              </span>
+              <span className="rounded-full border border-border/50 bg-background/50 px-2.5 py-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                {activeMlModel?.inferenceMode ?? ACTIVE_ML_MODEL.inferenceMode}
+              </span>
+            </div>
+
+            <div className="mt-4">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Modelo ML activo</p>
+              <h3 className="mt-2 text-2xl font-semibold text-foreground">
+                {activeMlModel?.modelVersion ?? ACTIVE_ML_MODEL.modelVersion} · {activeMlModel?.modelType ?? ACTIVE_ML_MODEL.modelType}
+              </h3>
+              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                Esta capa ya representa la integración prevista sin abrir otra vista: un servicio dedicado entrena,
+                versiona y puntúa eventos antes de enriquecer <code className="rounded bg-background/60 px-1">logs</code>,
+                <code className="ml-1 rounded bg-background/60 px-1">alerts</code> y un resumen persistido en
+                <code className="ml-1 rounded bg-background/60 px-1">logguard_ml.ml_runs</code>.
+              </p>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className="rounded-lg border border-border/40 bg-background/40 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Dataset base</p>
+                <p className="mt-2 text-sm text-foreground">{activeMlModel?.trainingDataset ?? ACTIVE_ML_MODEL.trainingDataset}</p>
+              </div>
+              <div className="rounded-lg border border-border/40 bg-background/40 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">F1 de referencia</p>
+                <p className="mt-2 text-sm text-foreground">{((activeMlModel?.referenceF1 ?? ACTIVE_ML_MODEL.referenceF1) * 100).toFixed(1)}%</p>
+              </div>
+              <div className="rounded-lg border border-border/40 bg-background/40 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Señal dominante</p>
+                <p className="mt-2 text-sm text-foreground">{mlOverview.topSignal}</p>
+              </div>
+              <div className="rounded-lg border border-border/40 bg-background/40 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Salida esperada</p>
+                <p className="mt-2 text-sm text-foreground">{mlOverview.outputTarget}</p>
+              </div>
+            </div>
+          </div>
+
+          <KPICard
+            title="Eventos Priorizados"
+            value={`${mlOverview.suspiciousCount}/${mlOverview.totalLogs || 0}`}
+            titleClassName="text-sky-300"
+            valueClassName="text-sky-300"
+            subtitle={`${mlOverview.suspiciousCount.toLocaleString()} flujos pasarían a correlación o alerta si el modelo se ejecuta sobre el rango.`}
+            detail={`Origen líder: ${mlOverview.topSource}. Protocolo dominante: ${mlOverview.dominantProtocol}.`}
+          />
+
+          <KPICard
+            title="Confianza Esperada"
+            value={`${mlOverview.averageConfidencePct.toFixed(1)}%`}
+            titleClassName="text-[#14b8a6]"
+            valueClassName="text-[#14b8a6]"
+            subtitle={`Latencia estimada de corrida batch: ${mlOverview.inferenceLatencyMs} ms.`}
+            detail={`Modo de detección: ${mlOverview.detectionMode}.`}
           />
         </div>
 

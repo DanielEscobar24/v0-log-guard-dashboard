@@ -26,21 +26,27 @@ import {
   ShieldAlert,
   Siren,
 } from "lucide-react"
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Pie, PieChart, Cell } from "recharts"
 import {
   acknowledgeAlert,
+  getActiveMlModel,
   getAlerts,
   getAlertTrend,
   getAttackDistribution,
+  getLatestMlRun,
   unacknowledgeAlert,
   updateAlertGroupAcknowledgement,
   type AlertTrendBucket,
   type AttackTypeRow,
   type BackendAlert,
   type DashboardRangeParams,
+  type MlActiveModel,
+  type MlRunSummary,
 } from "@/lib/api"
 import { loadDashboardRange } from "@/lib/dashboard-range"
 import { alertSeverityClass, alertSeverityLabel, labelBadgeClass } from "@/lib/label-styles"
+import { ACTIVE_ML_MODEL, deriveAlertMlSignals } from "@/lib/ml-insights"
+import { subscribeMlRunEvents } from "@/lib/ml-run-events"
 
 type FilterMode = "Todas" | "Críticas" | "Altas" | "Reconocidas"
 
@@ -133,6 +139,23 @@ function AlertTrendTooltip({
   )
 }
 
+function AlertDistributionTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean
+  payload?: Array<{ payload?: { type?: string; count?: number }; value?: number }>
+}) {
+  if (!active || !payload?.length) return null
+  const item = payload[0]
+  return (
+    <div className="rounded-lg border border-border bg-popover px-3 py-2 text-sm shadow-md">
+      <p className="mb-1 text-xs text-muted-foreground">{item.payload?.type ?? "Tipo de alerta"}</p>
+      <p className="font-medium text-foreground">{Number(item.value ?? 0).toLocaleString()} alertas</p>
+    </div>
+  )
+}
+
 export default function AlertsPage() {
   const [appliedRange, setAppliedRange] = useState<DateRange | null>(null)
   const [hasHydratedRange, setHasHydratedRange] = useState(false)
@@ -146,6 +169,8 @@ export default function AlertsPage() {
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null)
   const [ackLoadingId, setAckLoadingId] = useState<string | null>(null)
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
+  const [activeMlModel, setActiveMlModel] = useState<MlActiveModel | null>(null)
+  const [latestMlRun, setLatestMlRun] = useState<MlRunSummary | null>(null)
 
   useEffect(() => {
     setAppliedRange(loadDashboardRange())
@@ -186,10 +211,24 @@ export default function AlertsPage() {
     }
   }, [rangeParams])
 
+  const loadMlContext = useCallback(async () => {
+    const [modelResult, latestRunResult] = await Promise.allSettled([getActiveMlModel(), getLatestMlRun()])
+    setActiveMlModel(modelResult.status === "fulfilled" ? modelResult.value : null)
+    setLatestMlRun(latestRunResult.status === "fulfilled" ? latestRunResult.value : null)
+  }, [])
+
   useEffect(() => {
     if (!hasHydratedRange) return
     void load()
-  }, [hasHydratedRange, load])
+    void loadMlContext()
+  }, [hasHydratedRange, load, loadMlContext])
+
+  useEffect(() => {
+    return subscribeMlRunEvents(() => {
+      void load()
+      void loadMlContext()
+    })
+  }, [load, loadMlContext])
 
   const stats = useMemo(() => {
     const open = alerts.filter((a) => !a.acknowledged)
@@ -238,6 +277,19 @@ export default function AlertsPage() {
     if (!selectedAlert || !isGroupableAttackType(selectedAlert.type)) return 1
     return alerts.filter((alert) => belongsToAlertGroup(alert, selectedAlert)).length
   }, [alerts, selectedAlert])
+  const selectedAlertMl = useMemo(
+    () => (selectedAlert ? deriveAlertMlSignals(selectedAlert, relatedAlertCount) : null),
+    [relatedAlertCount, selectedAlert],
+  )
+  const averageAlertConfidence = useMemo(() => {
+    if (alerts.length === 0) return 0
+    const total = alerts.reduce((sum, alert) => sum + deriveAlertMlSignals(alert).confidencePct, 0)
+    return total / alerts.length
+  }, [alerts])
+  const groupedCandidates = useMemo(
+    () => alerts.filter((alert) => isGroupableAttackType(alert.type)).length,
+    [alerts],
+  )
 
   const handlesAlertGroup = Boolean(selectedAlert && isGroupableAttackType(selectedAlert.type) && relatedAlertCount > 1)
 
@@ -279,12 +331,12 @@ export default function AlertsPage() {
   const dialogDescription = selectedAlert
     ? selectedAlert.acknowledged
       ? handlesAlertGroup
-        ? `Seguro quieres realizar esta accion? Se anulara el seguimiento del grupo y ${relatedAlertCount} alertas volveran a quedar abiertas.`
-        : "Seguro quieres realizar esta accion? La alerta volvera a quedar como abierta para continuar su seguimiento."
+        ? `Seguro quieres realizar esta acción? Se anulará el seguimiento del grupo y ${relatedAlertCount} alertas volverán a quedar abiertas.`
+        : "Seguro quieres realizar esta acción? La alerta volverá a quedar como abierta para continuar su seguimiento."
       : handlesAlertGroup
-        ? `Seguro quieres realizar esta accion? Se marcara como visualizado todo el grupo asociado a este evento (${relatedAlertCount} alertas relacionadas).`
-        : "Seguro quieres realizar esta accion? La alerta quedara marcada como ya visualizada."
-    : "Seguro quieres realizar esta accion?"
+        ? `Seguro quieres realizar esta acción? Se marcará como visualizado todo el grupo asociado a este evento (${relatedAlertCount} alertas relacionadas).`
+        : "Seguro quieres realizar esta acción? La alerta quedará marcada como ya visualizada."
+    : "Seguro quieres realizar esta acción?"
 
   return (
     <DashboardLayout>
@@ -340,6 +392,57 @@ export default function AlertsPage() {
           </div>
         )}
 
+        <div className="mb-6 rounded-xl border border-sky-500/20 bg-sky-500/5 p-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-sky-300">
+              {ACTIVE_ML_MODEL.serviceName}
+            </span>
+            <span className="rounded-full border border-border/50 bg-background/50 px-2.5 py-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+              {activeMlModel?.modelVersion ?? ACTIVE_ML_MODEL.modelVersion}
+            </span>
+            <span className="rounded-full border border-border/50 bg-background/50 px-2.5 py-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+              scoring + priorización operativa
+            </span>
+          </div>
+
+          <div className="mt-4 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="max-w-2xl">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Capa ML sobre el flujo de alertas
+              </p>
+              <h3 className="mt-2 text-xl font-semibold text-foreground">
+                Priorización asistida por modelo dentro de la misma vista
+              </h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                En lugar de abrir otro módulo, esta pantalla mostraría cómo <code className="rounded bg-background/60 px-1">Guard-logs-ML</code>{" "}
+                enriquecería cada alerta con confianza, modelo activo y criterio de correlación antes de persistir el resumen en{" "}
+                <code className="rounded bg-background/60 px-1">logguard_ml.ml_runs</code>.
+              </p>
+              {latestMlRun && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Última corrida: <span className="font-medium text-foreground">{latestMlRun.modelVersion}</span> sobre{" "}
+                  {latestMlRun.totalScored.toLocaleString()} logs, con {latestMlRun.suspiciousCount.toLocaleString()} priorizados.
+                </p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:min-w-[520px]">
+              <div className="rounded-lg border border-border/40 bg-background/40 px-3 py-3">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Alertas enriquecidas</p>
+                <p className="mt-2 text-sm font-medium text-foreground">{alerts.length.toLocaleString()}</p>
+              </div>
+              <div className="rounded-lg border border-border/40 bg-background/40 px-3 py-3">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Confianza media</p>
+                <p className="mt-2 text-sm font-medium text-foreground">{averageAlertConfidence.toFixed(1)}%</p>
+              </div>
+              <div className="rounded-lg border border-border/40 bg-background/40 px-3 py-3">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Candidatas a correlación</p>
+                <p className="mt-2 text-sm font-medium text-foreground">{groupedCandidates.toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-xl border border-border/40 bg-card p-5">
             <div className="flex items-center justify-between">
@@ -393,51 +496,57 @@ export default function AlertsPage() {
         <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-[1.4fr_0.9fr]">
           <div className="rounded-xl border border-border/40 bg-card p-5">
             <h3 className="mb-1 text-sm font-semibold uppercase tracking-wider text-foreground">
-              Evolución de alertas activas
+              Distribución de alertas activas
             </h3>
             <p className="mb-4 text-xs text-muted-foreground">
-              Muestra cómo se concentraron las alertas abiertas por franja temporal.
+              Muestra cómo se distribuyen las alertas activas por tipo de ataque.
             </p>
             <div className="h-[260px]">
-              {trend.length === 0 ? (
+              {vectorRows.length === 0 ? (
                 <p className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                  Sin datos temporales de alertas para este entorno.
+                  Sin datos de distribución de alertas para este entorno.
                 </p>
               ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={trend} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="alertsTrendGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.45} />
-                        <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.04} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid vertical={false} stroke="rgba(148,163,184,0.12)" />
-                    <XAxis
-                      dataKey="timestamp"
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: "#64748b", fontSize: 11 }}
-                      tickFormatter={formatAlertTrendTime}
-                      minTickGap={18}
-                    />
-                    <YAxis
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: "#64748b", fontSize: 11 }}
-                      allowDecimals={false}
-                    />
-                    <Tooltip content={<AlertTrendTooltip />} />
-                    <Area
-                      type="monotone"
-                      dataKey="activeAlerts"
-                      stroke="#f59e0b"
-                      strokeWidth={2.25}
-                      fill="url(#alertsTrendGradient)"
-                      isAnimationActive={false}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <div className="flex h-full flex-col items-center justify-center gap-4 sm:flex-row">
+                  <div className="relative h-[220px] w-full sm:w-1/2">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={vectorRows}
+                          dataKey="count"
+                          nameKey="type"
+                          innerRadius={62}
+                          outerRadius={96}
+                          paddingAngle={4}
+                          stroke="transparent"
+                        >
+                          {vectorRows.map((entry) => (
+                            <Cell key={entry.type} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip content={<AlertDistributionTooltip />} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                      <span className="text-3xl font-semibold text-foreground">{stats.active.toLocaleString()}</span>
+                      <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Alertas activas</span>
+                    </div>
+                  </div>
+
+                  <div className="flex w-full flex-1 flex-col justify-center gap-3 sm:w-auto">
+                    {vectorRows.map((row) => (
+                      <div key={row.type} className="flex items-center gap-3">
+                        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: row.color }} />
+                        <div className="min-w-0 flex-1 text-sm">
+                          <p className="truncate font-medium text-foreground">{row.type}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {row.count.toLocaleString()} alertas · {row.percentage.toFixed(1)}%
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -629,6 +738,23 @@ export default function AlertsPage() {
                   </div>
                 </div>
 
+                {selectedAlertMl && (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="rounded-lg border border-border/40 bg-background/40 px-3 py-2">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Motor de detección</p>
+                      <p className="mt-2 text-sm text-foreground">{selectedAlertMl.source}</p>
+                    </div>
+                    <div className="rounded-lg border border-border/40 bg-background/40 px-3 py-2">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Confianza ML</p>
+                      <p className="mt-2 text-sm text-foreground">{selectedAlertMl.confidencePct.toFixed(1)}%</p>
+                    </div>
+                    <div className="rounded-lg border border-border/40 bg-background/40 px-3 py-2">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Modelo</p>
+                      <p className="mt-2 text-sm text-foreground">{selectedAlertMl.modelVersion}</p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="rounded-lg bg-background/40 px-3 py-2">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Timestamp</p>
                   <p className="mt-2 font-mono text-sm text-foreground">{formatTime(selectedAlert.timestamp)}</p>
@@ -659,12 +785,22 @@ export default function AlertsPage() {
                   <p className="mt-2 text-sm text-foreground">{selectedAlert.message}</p>
                 </div>
 
+                {selectedAlertMl && (
+                  <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 px-3 py-2">
+                    <p className="text-xs uppercase tracking-wide text-sky-300">Justificación ML</p>
+                    <p className="mt-2 text-sm text-foreground">{selectedAlertMl.rationale}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Corrida de referencia: <span className="font-medium text-foreground">{selectedAlertMl.runLabel}</span>
+                    </p>
+                  </div>
+                )}
+
                 {handlesAlertGroup && (
                   <div className="rounded-lg border border-[#f59e0b]/25 bg-[#f59e0b]/8 px-3 py-2">
                     <p className="text-xs uppercase tracking-wide text-[#f59e0b]">Seguimiento agrupado</p>
                     <p className="mt-2 text-sm text-foreground">
                       Este evento se gestiona como un grupo DDoS de {relatedAlertCount} alertas con el mismo origen,
-                      destino y tipo. La accion de reconocer o anular se aplica a todas en una sola operacion.
+                      destino y tipo. La acción de reconocer o anular se aplica a todas en una sola operación.
                     </p>
                   </div>
                 )}

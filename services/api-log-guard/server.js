@@ -16,6 +16,7 @@ const PORT = Number.parseInt(process.env.PORT || "4000", 10)
 const MONGODB_URL =
   process.env.MONGODB_URL || "mongodb://admin:logguard123@localhost:27017/logguard?authSource=admin"
 const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || "logguard"
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:8100"
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000"
 
 const app = express()
@@ -38,6 +39,56 @@ function logsCollection() {
 
 function alertsCollection() {
   return db.collection("alerts")
+}
+
+const EFFECTIVE_LABEL_EXPRESSION = { $ifNull: ["$ml_prediction", "$label"] }
+const EFFECTIVE_SEVERITY_EXPRESSION = { $ifNull: ["$ml_severity", "$severity"] }
+
+function getMlServiceUrl(path = "") {
+  const base = ML_SERVICE_URL.trim().replace(/\/$/, "")
+  const normalizedPath = path ? `/${String(path).replace(/^\//, "")}` : ""
+  return `${base}${normalizedPath}`
+}
+
+async function readMlServiceError(response) {
+  try {
+    const payload = await response.json()
+    if (payload?.error) return payload.error
+  } catch {}
+  try {
+    const text = await response.text()
+    if (text) return text
+  } catch {}
+  return `${response.status} ${response.statusText}`
+}
+
+async function callMlService(path, options = {}) {
+  try {
+    const response = await fetch(getMlServiceUrl(path), {
+      method: options.method || "GET",
+      headers: {
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...(options.headers || {}),
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    })
+
+    if (!response.ok) {
+      const errorMessage = await readMlServiceError(response)
+      return { ok: false, status: response.status, error: errorMessage }
+    }
+
+    return { ok: true, status: response.status, data: await response.json() }
+  } catch (error) {
+    return {
+      ok: false,
+      status: 503,
+      error:
+        error instanceof Error
+          ? `No fue posible conectar con Guard-logs-ML: ${error.message}`
+          : "No fue posible conectar con Guard-logs-ML",
+    }
+  }
 }
 
 const GROUPABLE_ALERT_TYPES = new Set([
@@ -168,7 +219,7 @@ async function getLogs(params = {}) {
     logsCollection().find(query).sort({ timestamp: -1 }).skip(skip).limit(limit).toArray(),
     logsCollection().countDocuments(query),
     logsCollection()
-      .aggregate([{ $match: query }, { $group: { _id: "$severity", count: { $sum: 1 } } }])
+      .aggregate([{ $match: query }, { $group: { _id: EFFECTIVE_SEVERITY_EXPRESSION, count: { $sum: 1 } } }])
       .toArray(),
   ])
 
@@ -190,18 +241,26 @@ async function getDashboardStats(params = {}) {
   const logQuery = buildTimestampRangeQuery(params)
   const alertQuery = buildTimestampRangeQuery(params)
 
-  const [totalLogs, totalAttacks, activeAlerts, acknowledgedAlerts, labelCounts, severityCounts] = await Promise.all([
+  const [totalLogs, totalAttackRows, activeAlerts, acknowledgedAlerts, labelCounts, severityCounts] = await Promise.all([
     logsCollection().countDocuments(logQuery),
-    logsCollection().countDocuments({ ...logQuery, label: { $ne: "Benign" } }),
+    logsCollection()
+      .aggregate([
+        { $match: logQuery },
+        { $project: { effectiveLabel: EFFECTIVE_LABEL_EXPRESSION } },
+        { $match: { effectiveLabel: { $ne: "Benign" } } },
+        { $count: "count" },
+      ])
+      .toArray(),
     alertsCollection().countDocuments({ ...alertQuery, acknowledged: false }),
     alertsCollection().countDocuments({ ...alertQuery, acknowledged: true }),
     logsCollection()
-      .aggregate([{ $match: logQuery }, { $group: { _id: "$label", count: { $sum: 1 } } }])
+      .aggregate([{ $match: logQuery }, { $group: { _id: EFFECTIVE_LABEL_EXPRESSION, count: { $sum: 1 } } }])
       .toArray(),
     logsCollection()
-      .aggregate([{ $match: logQuery }, { $group: { _id: "$severity", count: { $sum: 1 } } }])
+      .aggregate([{ $match: logQuery }, { $group: { _id: EFFECTIVE_SEVERITY_EXPRESSION, count: { $sum: 1 } } }])
       .toArray(),
   ])
+  const totalAttacks = totalAttackRows[0]?.count ?? 0
 
   return {
     totalLogs,
@@ -223,6 +282,8 @@ async function getFilteredTrafficTimeline(params = {}) {
     {
       $addFields: {
         timestampDate: toTimestampDateExpression("$timestamp"),
+        effectiveLabel: EFFECTIVE_LABEL_EXPRESSION,
+        effectiveSeverity: EFFECTIVE_SEVERITY_EXPRESSION,
       },
     },
     {
@@ -246,11 +307,11 @@ async function getFilteredTrafficTimeline(params = {}) {
         },
         total: { $sum: 1 },
         attacks: {
-          $sum: { $cond: [{ $ne: ["$label", "Benign"] }, 1, 0] },
+          $sum: { $cond: [{ $ne: ["$effectiveLabel", "Benign"] }, 1, 0] },
         },
         highRisk: {
           $sum: {
-            $cond: [{ $in: ["$severity", ["high", "critical"]] }, 1, 0],
+            $cond: [{ $in: ["$effectiveSeverity", ["high", "critical"]] }, 1, 0],
           },
         },
         preview: {
@@ -260,8 +321,8 @@ async function getFilteredTrafficTimeline(params = {}) {
             src_ip: "$src_ip",
             dst_ip: "$dst_ip",
             protocol: "$protocol",
-            label: "$label",
-            severity: "$severity",
+            label: "$effectiveLabel",
+            severity: "$effectiveSeverity",
           },
         },
       },
@@ -454,6 +515,7 @@ app.get("/api/stats/traffic", async (req, res) => {
       {
         $addFields: {
           timestampDate: toTimestampDateExpression("$timestamp"),
+          effectiveLabel: EFFECTIVE_LABEL_EXPRESSION,
         },
       },
       ...(useLookbackFilter
@@ -469,10 +531,10 @@ app.get("/api/stats/traffic", async (req, res) => {
             },
           },
           benign: {
-            $sum: { $cond: [{ $eq: ["$label", "Benign"] }, 1, 0] },
+            $sum: { $cond: [{ $eq: ["$effectiveLabel", "Benign"] }, 1, 0] },
           },
           attacks: {
-            $sum: { $cond: [{ $ne: ["$label", "Benign"] }, 1, 0] },
+            $sum: { $cond: [{ $ne: ["$effectiveLabel", "Benign"] }, 1, 0] },
           },
           total: { $sum: 1 },
         },
@@ -497,12 +559,12 @@ app.get("/api/stats/traffic", async (req, res) => {
 
 app.get("/api/stats/attacks", async (req, res) => {
   try {
-    const query = { ...buildTimestampRangeQuery(req.query), label: { $ne: "Benign" } }
-
     const attacks = await logsCollection()
       .aggregate([
-        { $match: query },
-        { $group: { _id: "$label", count: { $sum: 1 } } },
+        { $match: buildTimestampRangeQuery(req.query) },
+        { $addFields: { effectiveLabel: EFFECTIVE_LABEL_EXPRESSION } },
+        { $match: { effectiveLabel: { $ne: "Benign" } } },
+        { $group: { _id: "$effectiveLabel", count: { $sum: 1 } } },
         { $sort: { count: -1 } },
       ])
       .toArray()
@@ -526,16 +588,17 @@ app.get("/api/stats/alerts-trend", async (req, res) => {
 app.get("/api/stats/top-sources", async (req, res) => {
   try {
     const limit = parsePositiveInt(req.query.limit, 10)
-    const query = { ...buildTimestampRangeQuery(req.query), label: { $ne: "Benign" } }
 
     const sources = await logsCollection()
       .aggregate([
-        { $match: query },
+        { $match: buildTimestampRangeQuery(req.query) },
+        { $addFields: { effectiveLabel: EFFECTIVE_LABEL_EXPRESSION } },
+        { $match: { effectiveLabel: { $ne: "Benign" } } },
         {
           $group: {
             _id: "$src_ip",
             attacks: { $sum: 1 },
-            types: { $addToSet: "$label" },
+            types: { $addToSet: "$effectiveLabel" },
           },
         },
         { $sort: { attacks: -1 } },
@@ -557,12 +620,13 @@ app.get("/api/stats/protocols", async (req, res) => {
     const protocols = await logsCollection()
       .aggregate([
         { $match: query },
+        { $addFields: { effectiveLabel: EFFECTIVE_LABEL_EXPRESSION } },
         {
           $group: {
             _id: "$protocol",
             count: { $sum: 1 },
             attacks: {
-              $sum: { $cond: [{ $ne: ["$label", "Benign"] }, 1, 0] },
+              $sum: { $cond: [{ $ne: ["$effectiveLabel", "Benign"] }, 1, 0] },
             },
           },
         },
@@ -575,6 +639,44 @@ app.get("/api/stats/protocols", async (req, res) => {
     console.error("Error fetching protocol stats:", error)
     res.status(500).json({ error: "Failed to fetch protocol stats" })
   }
+})
+
+app.get("/api/ml/models/active", async (req, res) => {
+  const result = await callMlService("/models/active")
+  if (!result.ok) {
+    return res.status(result.status).json({ error: result.error })
+  }
+  return res.json(result.data)
+})
+
+app.get("/api/ml/runs/latest", async (req, res) => {
+  const result = await callMlService("/runs/latest")
+  if (!result.ok) {
+    return res.status(result.status).json({ error: result.error })
+  }
+  return res.json(result.data)
+})
+
+app.post("/api/ml/train", async (req, res) => {
+  const result = await callMlService("/train", {
+    method: "POST",
+    body: req.body ?? {},
+  })
+  if (!result.ok) {
+    return res.status(result.status).json({ error: result.error })
+  }
+  return res.json(result.data)
+})
+
+app.post("/api/ml/run", async (req, res) => {
+  const result = await callMlService("/run", {
+    method: "POST",
+    body: req.body ?? {},
+  })
+  if (!result.ok) {
+    return res.status(result.status).json({ error: result.error })
+  }
+  return res.json(result.data)
 })
 
 async function shutdown() {

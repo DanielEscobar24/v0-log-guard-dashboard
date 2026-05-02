@@ -8,8 +8,10 @@ import { List, type RowComponentProps } from "react-window"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { getLogs, type BackendLog } from "@/lib/api"
+import { getActiveMlModel, getLogs, runMlRange, type BackendLog, type MlActiveModel, type MlRunSummary } from "@/lib/api"
 import { labelBadgeClass } from "@/lib/label-styles"
+import { ACTIVE_ML_MODEL, deriveMlRangeRun } from "@/lib/ml-insights"
+import { publishMlRunEvent } from "@/lib/ml-run-events"
 import { toast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 
@@ -17,6 +19,7 @@ interface LiveStreamTableProps {
   initialLogs?: BackendLog[]
   initialRange?: DateRange
   onRangeApply?: (range: DateRange) => void
+  onMlRunComplete?: (run: MlRunSummary) => void
 }
 
 type SeveritySummaryItem = {
@@ -115,7 +118,7 @@ function buildCsv(logs: BackendLog[]) {
       log.dst_ip,
       log.protocol,
       log.duration ?? "",
-      log.label === "Benign" ? "Normal" : log.label,
+      (log.ml_prediction ?? log.label) === "Benign" ? "Normal" : (log.ml_prediction ?? log.label),
       log.severity ?? "",
     ]
       .map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`)
@@ -189,8 +192,8 @@ function LogVirtualRow({
         <div className="pr-4 text-sm text-muted-foreground">{log.protocol}</div>
         <div className="pr-4 text-sm text-muted-foreground">{log.duration?.toFixed(3) ?? "—"}</div>
         <div>
-          <span className={cn("rounded px-2.5 py-1 text-xs font-medium", labelBadgeClass(log.label))}>
-            {(log.label === "Benign" ? "Normal" : log.label).toUpperCase()}
+          <span className={cn("rounded px-2.5 py-1 text-xs font-medium", labelBadgeClass(log.ml_prediction ?? log.label))}>
+            {((log.ml_prediction ?? log.label) === "Benign" ? "Normal" : (log.ml_prediction ?? log.label)).toUpperCase()}
           </span>
         </div>
       </div>
@@ -198,7 +201,7 @@ function LogVirtualRow({
   )
 }
 
-export function LiveStreamTable({ initialLogs = [], initialRange, onRangeApply }: LiveStreamTableProps) {
+export function LiveStreamTable({ initialLogs = [], initialRange, onRangeApply, onMlRunComplete }: LiveStreamTableProps) {
   const today = useMemo(() => startOfDay(new Date()), [])
   const normalizedInitialRange = useMemo(
     () => ({
@@ -217,6 +220,8 @@ export function LiveStreamTable({ initialLogs = [], initialRange, onRangeApply }
   const [draftRange, setDraftRange] = useState<DateRange>(normalizedInitialRange)
   const [visibleMonth, setVisibleMonth] = useState<Date>(() => getCalendarAnchorMonth(normalizedInitialRange, today))
   const [severitySummary, setSeveritySummary] = useState<SeveritySummaryItem[]>([])
+  const [activeModel, setActiveModel] = useState<MlActiveModel | null>(null)
+  const [lastMlRun, setLastMlRun] = useState<MlRunSummary | null>(null)
   const requestSequence = useRef(0)
 
   useEffect(() => {
@@ -247,6 +252,19 @@ export function LiveStreamTable({ initialLogs = [], initialRange, onRangeApply }
       }),
     [severitySummary],
   )
+  const mlRunSummary = useMemo(() => deriveMlRangeRun(logs), [logs])
+  const displayedRunSummary = lastMlRun
+    ? {
+        totalScored: lastMlRun.totalScored,
+        suspiciousCount: lastMlRun.suspiciousCount,
+        averageConfidencePct: lastMlRun.averageConfidencePct,
+        collectionsWritten: lastMlRun.collectionsWritten,
+      }
+    : mlRunSummary
+  const displayedModel = {
+    serviceName: activeModel?.serviceName ?? ACTIVE_ML_MODEL.serviceName,
+    modelVersion: lastMlRun?.modelVersion ?? activeModel?.modelVersion ?? ACTIVE_ML_MODEL.modelVersion,
+  }
 
   const rangeLabel = useMemo(() => {
     if (appliedRange.from && appliedRange.to) {
@@ -368,6 +386,27 @@ export function LiveStreamTable({ initialLogs = [], initialRange, onRangeApply }
   }, [formattedAppliedRange.from, formattedAppliedRange.to, isAppliedRangeValid])
 
   useEffect(() => {
+    setLastMlRun(null)
+  }, [formattedAppliedRange.from, formattedAppliedRange.to])
+
+  useEffect(() => {
+    let active = true
+    void getActiveMlModel()
+      .then((model) => {
+        if (!active) return
+        setActiveModel(model)
+      })
+      .catch(() => {
+        if (!active) return
+        setActiveModel(null)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
     if (isRangePickerOpen) {
       setDraftRange(appliedRange)
       setRangeTouched(false)
@@ -446,14 +485,54 @@ export function LiveStreamTable({ initialLogs = [], initialRange, onRangeApply }
   }
 
   const runDiagnosis = async () => {
-    if (!isAppliedRangeValid) return
+    if (!isAppliedRangeValid || !formattedAppliedRange.from || !formattedAppliedRange.to) return
     setIsRunningDiagnosis(true)
-    await new Promise((resolve) => setTimeout(resolve, 1600))
-    setIsRunningDiagnosis(false)
-    toast({
-      title: "Análisis iniciado",
-      description: `Se preparó un análisis simulado del ${formattedAppliedRange.from} al ${formattedAppliedRange.to}. Este flujo podrá conectarse después con el modelo de ML.`,
-    })
+    try {
+      const run = await runMlRange({
+        from: formatDateTimeRange(formattedAppliedRange.from),
+        to: formatDateTimeRange(formattedAppliedRange.to, true),
+        triggerSource: "dashboard-range",
+        autoTrain: true,
+        forceRetrain: true,
+      })
+
+      setLastMlRun(run)
+      setActiveModel((current) =>
+        current
+          ? { ...current, modelVersion: run.modelVersion, modelType: run.modelType }
+          : {
+              serviceName: ACTIVE_ML_MODEL.serviceName,
+              modelVersion: run.modelVersion,
+              modelType: run.modelType,
+              trainingDataset: ACTIVE_ML_MODEL.trainingDataset,
+              referenceF1: ACTIVE_ML_MODEL.referenceF1,
+              inferenceMode: ACTIVE_ML_MODEL.inferenceMode,
+              trainedAt: run.finishedAt,
+              featureNames: [],
+              totalTrainingRows: 0,
+              testRows: 0,
+              isActive: true,
+              thresholdF1: 0,
+            },
+      )
+
+      await loadLogs(formattedAppliedRange.from, formattedAppliedRange.to)
+      publishMlRunEvent(run)
+      onMlRunComplete?.(run)
+
+      toast({
+        title: run.trainedModel ? "Modelo entrenado y corrida completada" : "Corrida Guard-logs-ML completada",
+        description: `Se puntuaron ${run.totalScored.toLocaleString()} registros y ${run.suspiciousCount.toLocaleString()} pasaron a seguimiento. Modelo activo: ${run.modelVersion}.`,
+      })
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "No se pudo ejecutar la corrida ML",
+        description: error instanceof Error ? error.message : "Guard-logs-ML no respondió como se esperaba.",
+      })
+    } finally {
+      setIsRunningDiagnosis(false)
+    }
   }
 
   return (
@@ -467,10 +546,48 @@ export function LiveStreamTable({ initialLogs = [], initialRange, onRangeApply }
             <p className="mt-1 text-xs text-muted-foreground">
               Selecciona un rango sobre la colección{" "}
               <code className="rounded bg-background/60 px-1 py-0.5">logs</code> para revisar,
-              descargar o enviar el subconjunto a un análisis posterior.
+              descargar o enviarlo a una corrida ML posterior.
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               Mostrando {logs.length.toLocaleString()} de {totalMatchingLogs.toLocaleString()} registros del rango seleccionado.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-sky-300">
+                {displayedModel.serviceName}
+              </span>
+              <span className="rounded-full border border-border/50 bg-background/50 px-2.5 py-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                {displayedModel.modelVersion}
+              </span>
+              <span className="rounded-full border border-border/50 bg-background/50 px-2.5 py-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                batch sobre rango
+              </span>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Scoring</p>
+                <p className="mt-1 text-sm font-medium text-foreground">{displayedRunSummary.totalScored.toLocaleString()} logs</p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Priorizados</p>
+                <p className="mt-1 text-sm font-medium text-foreground">{displayedRunSummary.suspiciousCount.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Confianza media</p>
+                <p className="mt-1 text-sm font-medium text-foreground">{displayedRunSummary.averageConfidencePct.toFixed(1)}%</p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Persistencia</p>
+                <p className="mt-1 text-sm font-medium text-foreground">{displayedRunSummary.collectionsWritten}</p>
+              </div>
+            </div>
+
+            <p className="mt-3 text-xs text-muted-foreground">
+              Esta tarjeta ahora resume la última corrida ejecutada sobre el rango o, si aún no hay una, la salida
+              estimada que se persistirá en <code className="rounded bg-background/60 px-1">logguard_ml.ml_runs</code>.
             </p>
           </div>
 
@@ -610,7 +727,7 @@ export function LiveStreamTable({ initialLogs = [], initialRange, onRangeApply }
             ) : (
               <>
                 <Zap className="mr-2 h-4 w-4" />
-                Ejecutar diagnóstico
+                Ejecutar corrida ML
               </>
             )}
           </Button>
