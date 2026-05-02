@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { format } from "date-fns"
 import type { DateRange, DayMouseEventHandler } from "react-day-picker"
 import { CalendarDays, Download, Loader2, RefreshCw, Zap } from "lucide-react"
@@ -157,7 +157,7 @@ function getDraftHelperMessage(range: DateRange) {
   return getRangeValidationMessage(range) ?? `Máximo ${MAX_ANALYSIS_DAYS} días por análisis.`
 }
 
-const LogVirtualRow = memo(function LogVirtualRow({
+function LogVirtualRow({
   index,
   style,
   logs,
@@ -196,7 +196,7 @@ const LogVirtualRow = memo(function LogVirtualRow({
       </div>
     </div>
   )
-})
+}
 
 export function LiveStreamTable({ initialLogs = [], initialRange, onRangeApply }: LiveStreamTableProps) {
   const today = useMemo(() => startOfDay(new Date()), [])
@@ -205,7 +205,7 @@ export function LiveStreamTable({ initialLogs = [], initialRange, onRangeApply }
       from: initialRange?.from ? startOfDay(initialRange.from) : today,
       to: initialRange?.to ? startOfDay(initialRange.to) : initialRange?.from ? startOfDay(initialRange.from) : today,
     }),
-    [initialRange?.from, initialRange?.to, today],
+    [initialRange, today],
   )
   const [logs, setLogs] = useState<BackendLog[]>(initialLogs)
   const [totalMatchingLogs, setTotalMatchingLogs] = useState(initialLogs.length)
@@ -217,6 +217,7 @@ export function LiveStreamTable({ initialLogs = [], initialRange, onRangeApply }
   const [draftRange, setDraftRange] = useState<DateRange>(normalizedInitialRange)
   const [visibleMonth, setVisibleMonth] = useState<Date>(() => getCalendarAnchorMonth(normalizedInitialRange, today))
   const [severitySummary, setSeveritySummary] = useState<SeveritySummaryItem[]>([])
+  const requestSequence = useRef(0)
 
   useEffect(() => {
     setAppliedRange(normalizedInitialRange)
@@ -294,6 +295,9 @@ export function LiveStreamTable({ initialLogs = [], initialRange, onRangeApply }
   }
 
   const loadLogs = async (from: string, to: string) => {
+    const requestId = requestSequence.current + 1
+    requestSequence.current = requestId
+
     setIsLoading(true)
     try {
       const firstPage = await getLogs({
@@ -320,6 +324,8 @@ export function LiveStreamTable({ initialLogs = [], initialRange, onRangeApply }
         allLogs = [...allLogs, ...remainingPages.flatMap((page) => page.logs)]
       }
 
+      if (requestSequence.current !== requestId) return
+
       setLogs(allLogs)
       setTotalMatchingLogs(firstPage.pagination.total)
 
@@ -342,13 +348,17 @@ export function LiveStreamTable({ initialLogs = [], initialRange, onRangeApply }
         })),
       )
     } catch (error) {
+      if (requestSequence.current !== requestId) return
+
       toast({
         variant: "destructive",
         title: "No se pudieron cargar los registros",
         description: error instanceof Error ? error.message : "Inténtalo de nuevo en unos segundos.",
       })
     } finally {
-      setIsLoading(false)
+      if (requestSequence.current === requestId) {
+        setIsLoading(false)
+      }
     }
   }
 
@@ -546,7 +556,7 @@ export function LiveStreamTable({ initialLogs = [], initialRange, onRangeApply }
             </Popover>
           </div>
           {orderedSeveritySummary.length > 0 && (
-            <div className="flex flex-wrap gap-2" style={{ width: 'fit-content'}}>
+            <div className="flex flex-wrap gap-2" style={{ width: "fit-content" }}>
               {orderedSeveritySummary.map((item) => (
                 <div key={item.name} className="rounded-lg border border-border/50 bg-background/40 px-3 py-2">
                   <div className="flex items-center gap-2">

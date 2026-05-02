@@ -3,13 +3,12 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { LayoutDashboard, FileText, AlertTriangle, TrendingUp } from "lucide-react"
+import { LayoutDashboard, FileText, AlertTriangle } from "lucide-react"
 
 const navItems = [
   { href: "/", label: "PANEL", icon: LayoutDashboard },
   { href: "/live-logs", label: "LOGS", icon: FileText },
   { href: "/alerts", label: "ALERTAS", icon: AlertTriangle },
-  { href: "/analytics", label: "ANÁLISIS", icon: TrendingUp },
 ]
 
 export function MobileNav() {

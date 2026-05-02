@@ -1,0 +1,182 @@
+{
+    "model_v1": {
+        "model_type": "RandomForest",
+        "date": "2026-04-21T01:43:54.246506",
+        "f1_score": 0.88264314081077,
+        "features": [
+            "failed_requests",
+            "avg_response_time",
+            "total_attempts",
+            "requests",
+            "error_rate"
+        ],
+        "metrics": {
+            "brute_force": {
+                "precision": 0.9285714285714286,
+                "recall": 0.4482758620689655,
+                "f1-score": 0.6046511627906976,
+                "support": 29.0
+            },
+            "flood": {
+                "precision": 1.0,
+                "recall": 0.8,
+                "f1-score": 0.8888888888888888,
+                "support": 5.0
+            },
+            "normal": {
+                "precision": 0.89171974522293,
+                "recall": 0.9929078014184397,
+                "f1-score": 0.9395973154362416,
+                "support": 141.0
+            },
+            "accuracy": 0.8971428571428571,
+            "macro avg": {
+                "precision": 0.9400970579314528,
+                "recall": 0.7470612211624684,
+                "f1-score": 0.8110457890386092,
+                "support": 175.0
+            },
+            "weighted avg": {
+                "precision": 0.9009203171714546,
+                "recall": 0.8971428571428571,
+                "f1-score": 0.88264314081077,
+                "support": 175.0
+            }
+        }
+    },
+    "model_v2": {
+        "model_type": "GradientBoosting",
+        "date": "2026-04-21T03:24:23.910782",
+        "f1_score": 0.9166666666666666,
+        "features": [
+            "failed_requests",
+            "avg_response_time",
+            "total_attempts",
+            "requests",
+            "error_rate"
+        ],
+        "metrics": {
+            "brute_force": {
+                "precision": 0.6666666666666666,
+                "recall": 0.6666666666666666,
+                "f1-score": 0.6666666666666666,
+                "support": 6.0
+            },
+            "flood": {
+                "precision": 1.0,
+                "recall": 1.0,
+                "f1-score": 1.0,
+                "support": 3.0
+            },
+            "normal": {
+                "precision": 0.9487179487179487,
+                "recall": 0.9487179487179487,
+                "f1-score": 0.9487179487179487,
+                "support": 39.0
+            },
+            "accuracy": 0.9166666666666666,
+            "macro avg": {
+                "precision": 0.8717948717948717,
+                "recall": 0.8717948717948717,
+                "f1-score": 0.8717948717948717,
+                "support": 48.0
+            },
+            "weighted avg": {
+                "precision": 0.9166666666666666,
+                "recall": 0.9166666666666666,
+                "f1-score": 0.9166666666666666,
+                "support": 48.0
+            }
+        }
+    },
+    "model_v3": {
+        "model_type": "RandomForest",
+        "date": "2026-04-21T03:24:52.514259",
+        "f1_score": 0.9329894595200718,
+        "features": [
+            "failed_requests",
+            "avg_response_time",
+            "total_attempts",
+            "requests",
+            "error_rate"
+        ],
+        "metrics": {
+            "brute_force": {
+                "precision": 0.5,
+                "recall": 0.3333333333333333,
+                "f1-score": 0.4,
+                "support": 3.0
+            },
+            "flood": {
+                "precision": 1.0,
+                "recall": 1.0,
+                "f1-score": 1.0,
+                "support": 1.0
+            },
+            "normal": {
+                "precision": 0.9565217391304348,
+                "recall": 0.9777777777777777,
+                "f1-score": 0.967032967032967,
+                "support": 45.0
+            },
+            "accuracy": 0.9387755102040817,
+            "macro avg": {
+                "precision": 0.8188405797101449,
+                "recall": 0.7703703703703703,
+                "f1-score": 0.789010989010989,
+                "support": 49.0
+            },
+            "weighted avg": {
+                "precision": 0.9294587400177463,
+                "recall": 0.9387755102040817,
+                "f1-score": 0.9329894595200718,
+                "support": 49.0
+            }
+        }
+    },
+    "model_v4": {
+        "model_type": "LogisticRegression",
+        "date": "2026-04-23T02:49:49.221797",
+        "f1_score": 0.8391713747645951,
+        "features": [
+            "failed_requests",
+            "avg_response_time",
+            "total_attempts",
+            "requests",
+            "error_rate"
+        ],
+        "metrics": {
+            "brute_force": {
+                "precision": 0.625,
+                "recall": 0.29411764705882354,
+                "f1-score": 0.4,
+                "support": 17.0
+            },
+            "flood": {
+                "precision": 0.8571428571428571,
+                "recall": 0.8571428571428571,
+                "f1-score": 0.8571428571428571,
+                "support": 7.0
+            },
+            "normal": {
+                "precision": 0.8817204301075269,
+                "recall": 0.9761904761904762,
+                "f1-score": 0.9265536723163842,
+                "support": 84.0
+            },
+            "accuracy": 0.8611111111111112,
+            "macro avg": {
+                "precision": 0.7879544290834614,
+                "recall": 0.7091503267973857,
+                "f1-score": 0.7278988431530804,
+                "support": 108.0
+            },
+            "weighted avg": {
+                "precision": 0.8397177419354839,
+                "recall": 0.8611111111111112,
+                "f1-score": 0.8391713747645951,
+                "support": 108.0
+            }
+        }
+    }
+}

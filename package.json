@@ -8,7 +8,8 @@
     "dev:workers": "python3 scripts/run_logguard_workers.py",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -73,6 +74,8 @@
     "@types/node": "^22",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.0",
     "postcss": "^8.5",
     "tailwindcss": "^4.2.0",
     "tw-animate-css": "1.3.3",

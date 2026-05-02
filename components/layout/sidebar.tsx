@@ -8,7 +8,6 @@ import {
   LayoutDashboard, 
   FileText, 
   AlertTriangle, 
-  TrendingUp, 
   Shield,
   CheckCircle,
   Loader2
@@ -20,7 +19,6 @@ const navItems = [
   { href: "/", label: "Panel", icon: LayoutDashboard },
   { href: "/live-logs", label: "Logs en vivo", icon: FileText },
   { href: "/alerts", label: "Alertas", icon: AlertTriangle },
-  { href: "/analytics", label: "Analítica", icon: TrendingUp },
 ]
 
 export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {

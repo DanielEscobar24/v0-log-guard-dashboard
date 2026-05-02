@@ -187,18 +187,19 @@ async function getLogs(params = {}) {
 }
 
 async function getDashboardStats(params = {}) {
-  const query = buildTimestampRangeQuery(params)
+  const logQuery = buildTimestampRangeQuery(params)
+  const alertQuery = buildTimestampRangeQuery(params)
 
   const [totalLogs, totalAttacks, activeAlerts, acknowledgedAlerts, labelCounts, severityCounts] = await Promise.all([
-    logsCollection().countDocuments(query),
-    logsCollection().countDocuments({ ...query, label: { $ne: "Benign" } }),
-    alertsCollection().countDocuments({ acknowledged: false }),
-    alertsCollection().countDocuments({ acknowledged: true }),
+    logsCollection().countDocuments(logQuery),
+    logsCollection().countDocuments({ ...logQuery, label: { $ne: "Benign" } }),
+    alertsCollection().countDocuments({ ...alertQuery, acknowledged: false }),
+    alertsCollection().countDocuments({ ...alertQuery, acknowledged: true }),
     logsCollection()
-      .aggregate([{ $match: query }, { $group: { _id: "$label", count: { $sum: 1 } } }])
+      .aggregate([{ $match: logQuery }, { $group: { _id: "$label", count: { $sum: 1 } } }])
       .toArray(),
     logsCollection()
-      .aggregate([{ $match: query }, { $group: { _id: "$severity", count: { $sum: 1 } } }])
+      .aggregate([{ $match: logQuery }, { $group: { _id: "$severity", count: { $sum: 1 } } }])
       .toArray(),
   ])
 

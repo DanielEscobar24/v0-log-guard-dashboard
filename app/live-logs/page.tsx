@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useState, useEffect, useCallback } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Header } from "@/components/layout/header"
 import { TrafficChart, type TrafficChartPoint } from "@/components/dashboard/traffic-chart"
@@ -56,7 +56,7 @@ type EnrichedLog = BackendLog & {
   alertCount?: number
 }
 
-const LiveLogVirtualRow = memo(function LiveLogVirtualRow({
+function LiveLogVirtualRow({
   index,
   style,
   logs,
@@ -109,7 +109,7 @@ const LiveLogVirtualRow = memo(function LiveLogVirtualRow({
       </div>
     </div>
   )
-})
+}
 
 export default function LiveLogsPage() {
   const [logs, setLogs] = useState<EnrichedLog[]>([])
@@ -119,6 +119,7 @@ export default function LiveLogsPage() {
   const [isLive, setIsLive] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const isRequestInFlight = useRef(false)
 
   const enrichLogsWithAlerts = useCallback((inputLogs: BackendLog[], relatedAlerts: BackendAlert[]) => {
     const alertsByLogId = new Map<string, BackendAlert[]>()
@@ -145,6 +146,10 @@ export default function LiveLogsPage() {
   }, [])
 
   const load = useCallback(async () => {
+    if (isRequestInFlight.current) return
+
+    isRequestInFlight.current = true
+
     try {
       setError(null)
       const [logsResponse, timelineResponse, statsResponse, alertsResponse] = await Promise.all([
@@ -157,10 +162,17 @@ export default function LiveLogsPage() {
       setLogs(enrichedLogs)
       setTimeline(timelineResponse)
       setStats(statsResponse)
-      setSelectedLogId((current) => current ?? enrichedLogs[0]?.id ?? null)
+      setSelectedLogId((current) => {
+        if (current && enrichedLogs.some((log) => log.id === current)) {
+          return current
+        }
+
+        return enrichedLogs[0]?.id ?? null
+      })
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al cargar logs")
     } finally {
+      isRequestInFlight.current = false
       setLoading(false)
     }
   }, [enrichLogsWithAlerts])

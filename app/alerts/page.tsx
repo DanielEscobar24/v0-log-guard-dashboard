@@ -135,6 +135,7 @@ function AlertTrendTooltip({
 
 export default function AlertsPage() {
   const [appliedRange, setAppliedRange] = useState<DateRange | null>(null)
+  const [hasHydratedRange, setHasHydratedRange] = useState(false)
   const [alerts, setAlerts] = useState<BackendAlert[]>([])
   const [trend, setTrend] = useState<AlertTrendBucket[]>([])
   const [vectors, setVectors] = useState<AttackTypeRow[]>([])
@@ -148,15 +149,17 @@ export default function AlertsPage() {
 
   useEffect(() => {
     setAppliedRange(loadDashboardRange())
+    setHasHydratedRange(true)
   }, [])
 
-  const rangeParams: DashboardRangeParams | undefined =
-    appliedRange?.from && appliedRange?.to
-      ? {
-          from: formatDateTimeRange(formatDateInput(appliedRange.from)),
-          to: formatDateTimeRange(formatDateInput(appliedRange.to), true),
-        }
-      : undefined
+  const rangeParams = useMemo<DashboardRangeParams | undefined>(() => {
+    if (!appliedRange?.from || !appliedRange?.to) return undefined
+
+    return {
+      from: formatDateTimeRange(formatDateInput(appliedRange.from)),
+      to: formatDateTimeRange(formatDateInput(appliedRange.to), true),
+    }
+  }, [appliedRange?.from, appliedRange?.to])
 
   const rangeLabel =
     appliedRange?.from && appliedRange?.to
@@ -165,6 +168,7 @@ export default function AlertsPage() {
 
   const load = useCallback(async () => {
     try {
+      setLoading(true)
       setError(null)
       const [alertsResponse, trendResponse, vectorResponse] = await Promise.all([
         getAlerts(200, rangeParams),
@@ -180,11 +184,12 @@ export default function AlertsPage() {
     } finally {
       setLoading(false)
     }
-  }, [rangeParams?.from, rangeParams?.to])
+  }, [rangeParams])
 
   useEffect(() => {
+    if (!hasHydratedRange) return
     void load()
-  }, [load])
+  }, [hasHydratedRange, load])
 
   const stats = useMemo(() => {
     const open = alerts.filter((a) => !a.acknowledged)
@@ -211,18 +216,9 @@ export default function AlertsPage() {
 
   const pageSize = 12
   const totalPages = Math.max(1, Math.ceil(filteredAlerts.length / pageSize))
-  const paginatedAlerts = filteredAlerts.slice((currentPage - 1) * pageSize, currentPage * pageSize)
-  const selectedAlert = alerts.find((alert) => alert.id === selectedAlertId) ?? paginatedAlerts[0] ?? null
-
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [filter])
-
-  useEffect(() => {
-    if (!selectedAlertId && paginatedAlerts[0]?.id) {
-      setSelectedAlertId(paginatedAlerts[0].id)
-    }
-  }, [paginatedAlerts, selectedAlertId])
+  const activePage = Math.min(currentPage, totalPages)
+  const paginatedAlerts = filteredAlerts.slice((activePage - 1) * pageSize, activePage * pageSize)
+  const selectedAlert = paginatedAlerts.find((alert) => alert.id === selectedAlertId) ?? paginatedAlerts[0] ?? null
 
   const vectorRows = useMemo(() => {
     const total = vectors.reduce((sum, row) => sum + row.count, 0) || 1
@@ -325,7 +321,10 @@ export default function AlertsPage() {
                         ? "bg-primary text-primary-foreground hover:bg-primary/90"
                         : "text-muted-foreground hover:bg-accent hover:text-foreground",
                     )}
-                    onClick={() => setFilter(option)}
+                    onClick={() => {
+                      setFilter(option)
+                      setCurrentPage(1)
+                    }}
                   >
                     {option}
                   </Button>
@@ -551,15 +550,15 @@ export default function AlertsPage() {
 
             <div className="flex items-center justify-between border-t border-border/40 px-5 py-4">
               <span className="text-sm text-muted-foreground">
-                Página {currentPage}/{totalPages} — {filteredAlerts.length} alertas
+                Página {activePage}/{totalPages} — {filteredAlerts.length} alertas
               </span>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="icon"
                   className="h-8 w-8 border-border/40 bg-background/40"
-                  disabled={currentPage <= 1}
-                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={activePage <= 1}
+                  onClick={() => setCurrentPage((page) => Math.max(1, Math.min(page, totalPages) - 1))}
                 >
                   <ChevronLeft className="h-4 w-4 text-muted-foreground" />
                 </Button>
@@ -567,8 +566,8 @@ export default function AlertsPage() {
                   variant="outline"
                   size="icon"
                   className="h-8 w-8 border-border/40 bg-background/40"
-                  disabled={currentPage >= totalPages}
-                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  disabled={activePage >= totalPages}
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, Math.min(page, totalPages) + 1))}
                 >
                   <ChevronRight className="h-4 w-4 text-muted-foreground" />
                 </Button>

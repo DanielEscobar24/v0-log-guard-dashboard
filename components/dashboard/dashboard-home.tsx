@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { DateRange } from "react-day-picker"
 import { Header } from "@/components/layout/header"
 import { KPICard } from "@/components/dashboard/kpi-card"
@@ -16,11 +16,9 @@ import {
   getAttackDistribution,
   getDashboardStats,
   getFilteredTimeline,
-  getLogs,
   getProtocolStats,
   getTopSources,
   type AttackTypeRow,
-  type BackendLog,
   type DashboardRangeParams,
   type DashboardStats,
   type FilteredTimelineBucket,
@@ -117,7 +115,6 @@ export function DashboardHome() {
   const [selectedRange, setSelectedRange] = useState<DateRange>(getDefaultDashboardRange)
   const [hasHydratedRange, setHasHydratedRange] = useState(false)
   const [stats, setStats] = useState<DashboardStats | null>(null)
-  const [logs, setLogs] = useState<BackendLog[]>([])
   const [attacks, setAttacks] = useState<AttackTypeRow[]>([])
   const [sources, setSources] = useState<TopSourceRow[]>([])
   const [protocols, setProtocols] = useState<ProtocolStatRow[]>([])
@@ -125,13 +122,14 @@ export function DashboardHome() {
   const [error, setError] = useState<string | null>(null)
   const requestSequence = useRef(0)
 
-  const rangeParams: DashboardRangeParams | undefined =
-    selectedRange.from && selectedRange.to
-      ? {
-          from: formatDateTimeRange(formatDateInput(selectedRange.from)),
-          to: formatDateTimeRange(formatDateInput(selectedRange.to), true),
-        }
-      : undefined
+  const rangeParams = useMemo<DashboardRangeParams | undefined>(() => {
+    if (!selectedRange.from || !selectedRange.to) return undefined
+
+    return {
+      from: formatDateTimeRange(formatDateInput(selectedRange.from)),
+      to: formatDateTimeRange(formatDateInput(selectedRange.to), true),
+    }
+  }, [selectedRange.from, selectedRange.to])
 
   const load = useCallback(async () => {
     const requestId = requestSequence.current + 1
@@ -140,7 +138,6 @@ export function DashboardHome() {
     setError(null)
     const results = await Promise.allSettled([
       getDashboardStats(rangeParams),
-      getLogs({ limit: 8, page: 1, ...rangeParams }),
       getAttackDistribution(rangeParams),
       getTopSources(8, rangeParams),
       getProtocolStats(rangeParams),
@@ -156,12 +153,11 @@ export function DashboardHome() {
       setError(err.reason instanceof Error ? err.reason.message : String(err.reason))
     }
     if (results[0].status === "fulfilled") setStats(results[0].value)
-    if (results[1].status === "fulfilled") setLogs(results[1].value.logs)
-    if (results[2].status === "fulfilled") setAttacks(results[2].value)
-    if (results[3].status === "fulfilled") setSources(results[3].value)
-    if (results[4].status === "fulfilled") setProtocols(results[4].value)
-    if (results[5].status === "fulfilled") setTimeline(results[5].value)
-  }, [rangeParams?.from, rangeParams?.to])
+    if (results[1].status === "fulfilled") setAttacks(results[1].value)
+    if (results[2].status === "fulfilled") setSources(results[2].value)
+    if (results[3].status === "fulfilled") setProtocols(results[3].value)
+    if (results[4].status === "fulfilled") setTimeline(results[4].value)
+  }, [rangeParams])
 
   useEffect(() => {
     setSelectedRange(loadDashboardRange())
@@ -174,8 +170,9 @@ export function DashboardHome() {
   }, [hasHydratedRange, selectedRange])
 
   useEffect(() => {
+    if (!hasHydratedRange) return
     void load()
-  }, [load])
+  }, [hasHydratedRange, load])
 
   const attackTotal = stats ? stats.totalAttacks : 0
   const severityDistribution = distributionToPanelData(stats?.bySeverity, SEVERITY_COLORS)
@@ -202,7 +199,6 @@ export function DashboardHome() {
 
         <div className="mb-6">
           <LiveStreamTable
-            initialLogs={logs}
             initialRange={selectedRange}
             onRangeApply={(range) => setSelectedRange(range)}
           />
